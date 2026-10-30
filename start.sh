@@ -3,7 +3,7 @@
 # Ctrl+C stops both. If the helper can't start, the web app still runs (Riff Arena just shows "helper offline").
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-WEB_PORT="${BASSHOPPER_WEB_PORT:-5173}"
+WEB_PORT="${BASSHOPPER_WEB_PORT:-5180}"
 HELPER_PORT="${BASSHOPPER_PORT:-8765}"
 HELPER_LOG="$ROOT/helper/helper.log"
 HELPER_PID=""

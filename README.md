@@ -19,7 +19,7 @@ You need [Node.js](https://nodejs.org) 20+ and [uv](https://docs.astral.sh/uv/)
 ```
 
 The first run installs everything (a minute or two). The app opens in your browser at
-<http://localhost:5173>. Press **Ctrl+C** in the terminal to stop it.
+<http://localhost:5180>. Press **Ctrl+C** in the terminal to stop it.
 
 `start.sh` also prints a "Tablet (Wi-Fi)" address. The page opens on a tablet, but browsers only allow
 the microphone (and the audio engine's AudioWorklet) on `localhost` or HTTPS, so lessons, Jam Room and
