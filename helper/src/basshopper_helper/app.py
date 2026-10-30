@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import jobs, library, stems
+from . import importer, inbox, jobs, library, stems
 from .audio import AUDIO_EXT, MEDIA_TYPES, duration_sec
 from .stems import SeparationCancelled, demucs_available, separate
 from .tabs import TabError, UnsupportedTabError, build_chart, list_tracks, load_score, pick_track
@@ -23,7 +23,10 @@ from .tabs.load import TAB_EXT
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    if not os.environ.get('BASSHOPPER_DISABLE_INBOX'):
+        inbox.start()
     yield
+    inbox.stop()
     # Without this, Ctrl+C waits for the job thread to finish a Demucs run (minutes on CPU).
     stems.shutdown()
     jobs.shutdown()
@@ -60,6 +63,11 @@ def health() -> dict:
     return {'ok': True, 'demucs': demucs_available()}
 
 
+@app.get('/api/inbox')
+def inbox_status() -> dict:
+    return {'path': str(inbox.inbox_dir()), 'items': inbox.status}
+
+
 @app.post('/api/tab/tracks')
 def tab_tracks(tab: Annotated[UploadFile, File()]) -> dict:
     return {'tracks': list_tracks(_read_tab(tab))}
@@ -76,67 +84,23 @@ def import_song(
     audio_ext = Path(audio.filename or '').suffix.lower()
     if audio_ext not in AUDIO_EXT:
         raise HTTPException(415, f'Audio must be one of {", ".join(sorted(AUDIO_EXT))}')
-
-    score, track_index = None, None
+    tab_file = None
     if tab is not None and tab.filename:
-        score = _read_tab(tab)
-        try:
-            wanted = int(track) if track.strip() else None
-        except ValueError as e:
-            raise HTTPException(400, 'track must be an integer') from e
-        try:
-            track_index = pick_track(score, wanted)
-        except TabError as e:
-            raise _tab_error(e) from e
-
-    title = title.strip() or (score.title if score else '') or Path(audio.filename or 'Untitled').stem
-    artist = artist.strip() or (score.artist if score else '')
-    song_id = library.new_song_id(title)
-    d = library.song_dir(song_id)
-    assert d is not None
-    d.mkdir(parents=True)
+        if Path(tab.filename).suffix.lower() not in TAB_EXT:
+            raise HTTPException(415, f'Tab must be one of {", ".join(sorted(TAB_EXT))}')
+        tab_file = (tab.filename, tab.file.read())
     try:
-        full = d / f'full{audio_ext}'
-        with full.open('wb') as f:
-            shutil.copyfileobj(audio.file, f)
-        if score is not None and track_index is not None and tab is not None:
-            tab.file.seek(0)
-            with (d / f'source{Path(tab.filename or "").suffix.lower()}').open('wb') as f:
-                shutil.copyfileobj(tab.file, f)
-            chart = build_chart(score, track_index, song_id, title)
-            library.write_json(d / 'chart.json', chart)
-    except Exception:
-        shutil.rmtree(d, ignore_errors=True)
-        raise
-
-    def work(job: jobs.Job) -> str:
-        try:
-            job.update('Reading audio', 0.05)
-            song = {
-                'id': song_id, 'title': title, 'artist': artist,
-                'durationSec': round(duration_sec(full), 3),
-                'hasChart': (d / 'chart.json').is_file(),
-                'stems': ['full'], 'offsetSec': 0.0,
-                'files': {'full': full.name}, 'trackIndex': track_index, 'createdAt': time.time(),
-            }
-            if demucs_available():
-                job.update('Separating stems (Demucs)', 0.1)
-                try:
-                    files = separate(full, d, lambda p: job.update(progress=0.1 + 0.85 * p))
-                    song['files'].update(files)
-                    song['stems'] = [s for s in library.STEM_NAMES if s in song['files']]
-                except SeparationCancelled:
-                    raise
-                except Exception as e:
-                    job.warning = f'Stem separation failed, only the full mix is available: {e}'
-            job.update('Saving', 0.97)
-            library.save_song(song)
-            return song_id
-        except Exception:
-            shutil.rmtree(d, ignore_errors=True)
-            raise
-
-    return {'jobId': jobs.submit(work).id}
+        wanted = int(track) if track.strip() else None
+    except ValueError as e:
+        raise HTTPException(400, 'track must be an integer') from e
+    try:
+        job = importer.start_import(
+            audio_name=audio.filename or f'audio{audio_ext}', audio=audio.file,
+            tab=tab_file, track=wanted, title=title, artist=artist,
+        )
+    except TabError as e:
+        raise _tab_error(e) from e
+    return {'jobId': job.id}
 
 
 @app.get('/api/jobs/{job_id}')

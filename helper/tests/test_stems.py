@@ -54,7 +54,7 @@ def fake_demucs(audio_path: Path, out: Path, device, progress):
 def test_import_with_stems_pipeline(tmp_path, monkeypatch):
     monkeypatch.setenv('BASSHOPPER_LIBRARY', str(tmp_path / 'lib'))
     monkeypatch.setattr(stems, '_run', fake_demucs)
-    monkeypatch.setattr('basshopper_helper.app.demucs_available', lambda: True)
+    monkeypatch.setattr('basshopper_helper.importer.demucs_available', lambda: True)
     from test_api import wait_job, wav_bytes
 
     client = TestClient(app)
@@ -72,7 +72,7 @@ def test_import_with_stems_pipeline(tmp_path, monkeypatch):
 def test_failed_separation_still_imports_full_mix(tmp_path, monkeypatch):
     monkeypatch.setenv('BASSHOPPER_LIBRARY', str(tmp_path / 'lib'))
     monkeypatch.setattr(stems, '_run', lambda *a: (1, 'boom\nRuntimeError: out of memory'))
-    monkeypatch.setattr('basshopper_helper.app.demucs_available', lambda: True)
+    monkeypatch.setattr('basshopper_helper.importer.demucs_available', lambda: True)
     from test_api import wait_job, wav_bytes
 
     client = TestClient(app)
