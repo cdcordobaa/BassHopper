@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { DRUM_STYLES, playDrumStep, type DrumStyle } from '../audio/band'
 import { engine } from '../audio/engine'
 import { midiToName, positionToMidi, STRINGS, type StringIndex } from '../music/notes'
 import { Fretboard, marksForMidi, type Mark } from './Fretboard'
@@ -6,42 +7,77 @@ import { useCurrentNote, useEngine, useNoteEvents } from './hooks'
 
 const NATURALS = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
 
-function Metronome() {
+function DrumMachine() {
   const [on, setOn] = useState(false)
   const [bpm, setBpm] = useState(80)
+  const [style, setStyle] = useState<DrumStyle | 'click'>('rock')
+  const [volume, setVolume] = useState(0.7)
+  const busRef = useRef<GainNode | null>(null)
+
+  useEffect(() => {
+    if (busRef.current) busRef.current.gain.value = volume
+  }, [volume])
+
   useEffect(() => {
     if (!on) return
     let next = 0
-    let beat = 0
+    let step = 0
     let alive = true
     let bus: GainNode | null = null
     engine.context().then((ctx) => {
       if (!alive) return
       bus = ctx.createGain()
+      bus.gain.value = volume
       bus.connect(ctx.destination)
+      busRef.current = bus
       next = ctx.currentTime + 0.1
     })
     const id = setInterval(() => {
       const ctx = engine.ctx
       if (!ctx || !bus) return
       while (next < ctx.currentTime + 0.2) {
-        engine.click(next, beat % 4 === 0, bus)
-        next += 60 / bpm
-        beat++
+        if (style === 'click') {
+          if (step % 4 === 0) engine.click(next, step % 16 === 0, bus)
+        } else playDrumStep(ctx, style, step % 16, next, bus)
+        next += 60 / bpm / 4
+        step++
       }
     }, 25)
     return () => {
       alive = false
       clearInterval(id)
       bus?.disconnect()
+      busRef.current = null
     }
-  }, [on, bpm])
+    // Volume is applied live through busRef; restarting on volume change would drop the groove.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [on, bpm, style])
+
   return (
-    <div className="row">
-      <button className={on ? 'primary' : ''} onClick={() => setOn(!on)}>{on ? '■ Stop' : '▶ Metronome'}</button>
-      <input type="range" min={40} max={160} value={bpm} onChange={(e) => setBpm(Number(e.target.value))} />
-      <b>{bpm} BPM</b>
-    </div>
+    <>
+      <div className="row">
+        <button className={on ? 'primary' : ''} onClick={() => setOn(!on)}>{on ? '■ Stop' : '▶ Start'}</button>
+        <div className="seg">
+          <button className={style === 'click' ? 'on' : ''} onClick={() => setStyle('click')}>⏱ Click</button>
+          {DRUM_STYLES.map((d) => (
+            <button key={d.id} className={style === d.id ? 'on' : ''} onClick={() => setStyle(d.id)}>
+              {d.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="sliders">
+        <label>
+          Tempo <b>{bpm} BPM</b>
+          <input type="range" min={40} max={160} value={bpm} onChange={(e) => setBpm(Number(e.target.value))} />
+        </label>
+        <label>
+          Volume <b>{Math.round(volume * 100)}%</b>
+          <input type="range" min={0} max={1} step={0.05} value={volume} onChange={(e) => setVolume(Number(e.target.value))} />
+        </label>
+      </div>
+      <p className="muted">Lock in with the kick drum. Try: root note on every kick, then add notes between.</p>
+    </>
   )
 }
 
@@ -159,8 +195,8 @@ export function FreePlay({ onBack, onSetup }: { onBack: () => void; onSetup: () 
         </div>
       </section>
       <section className="card">
-        <h2>Metronome</h2>
-        <Metronome />
+        <h2>🥁 Drum Machine</h2>
+        <DrumMachine />
       </section>
       <section className="card">
         <h2>🎯 Note Hunt</h2>

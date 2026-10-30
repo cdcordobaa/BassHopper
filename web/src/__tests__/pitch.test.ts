@@ -51,3 +51,10 @@ describe('detectPitch', () => {
     expect(detectPitch(new Float32Array(N), RATE)).toBeNull()
   })
 })
+
+describe('detectPitch range', () => {
+  it('rejects sounds above the bass range instead of reporting a lower octave', () => {
+    // E5 (659 Hz) would otherwise be reported as E4 via its second period.
+    expect(detectPitch(tone(midiToFreq(76), [1, 0.5, 0.3]), RATE)).toBeNull()
+  })
+})

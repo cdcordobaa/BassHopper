@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { DRUM_STYLES, playChordStab, playDrumStep, type Backing, type DrumStyle } from '../audio/band'
 import { engine } from '../audio/engine'
 import { chartToTab, timeChart } from '../game/chart'
 import { nextLevel, type Level } from '../game/path/worlds'
@@ -10,6 +11,11 @@ import { Highway, type HighwayState } from './Highway'
 import { useCurrentNote, useEngine } from './hooks'
 
 const SPEEDS = [0.5, 0.75, 0.9, 1]
+const BACKINGS: { id: Backing; label: string }[] = [
+  { id: 'click', label: '⏱ Click' },
+  { id: 'drums', label: '🥁 Drums' },
+  { id: 'band', label: '🎸 Full band' },
+]
 
 interface Props {
   level: Level
@@ -28,10 +34,19 @@ export function Play({ level, onExit, onSetup, onLevel }: Props) {
   const [speed, setSpeed] = useState(1)
   const [rookie, setRookie] = useState(true)
   const [wait, setWait] = useState(true)
+  const [backing, setBackingState] = useState<Backing>(() => (localStorage.getItem('bh.backing') as Backing | null) ?? 'drums')
+  const [style, setStyle] = useState<DrumStyle>(level.style ?? 'rock')
+  const setBacking = (b: Backing) => {
+    localStorage.setItem('bh.backing', b)
+    setBackingState(b)
+  }
   const [phase, setPhase] = useState<Phase>({ name: 'intro' })
   const runs = useRef(0)
 
-  useEffect(() => setPhase({ name: 'intro' }), [level.id])
+  useEffect(() => {
+    setPhase({ name: 'intro' })
+    setStyle(level.style ?? 'rock')
+  }, [level.id, level.style])
 
   if (phase.name === 'playing') {
     return (
@@ -41,6 +56,8 @@ export function Play({ level, onExit, onSetup, onLevel }: Props) {
         speed={speed}
         rookie={rookie}
         wait={wait}
+        backing={backing}
+        style={style}
         onQuit={() => setPhase({ name: 'intro' })}
         onDone={(summary, avgDelta, latencyAdjustMs) => {
           const xp = recordRun(level.id, summary)
@@ -127,6 +144,30 @@ export function Play({ level, onExit, onSetup, onLevel }: Props) {
         </label>
         <span className="muted">{Math.round(level.chart.bpm * speed)} BPM</span>
       </section>
+      <section className="card">
+        <h2>Backing band</h2>
+        <div className="row">
+          <div className="seg">
+            {BACKINGS.map((b) => (
+              <button key={b.id} className={b.id === backing ? 'on' : ''} onClick={() => setBacking(b.id)}>
+                {b.label}
+              </button>
+            ))}
+          </div>
+          {backing !== 'click' && (
+            <div className="seg">
+              {DRUM_STYLES.map((d) => (
+                <button key={d.id} className={d.id === style ? 'on' : ''} onClick={() => setStyle(d.id)}>
+                  {d.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {backing !== 'click' && e.source?.kind === 'mic' && (
+          <p className="muted">🎧 Headphones recommended. Otherwise keep the band quieter than your amp so the mic hears your bass, not the drums.</p>
+        )}
+      </section>
       {!e.source && (
         <p className="warn">
           No input connected — the game can't hear you. <button onClick={onSetup}>Set up input</button>
@@ -144,13 +185,15 @@ interface SessionProps {
   speed: number
   rookie: boolean
   wait: boolean
+  backing: Backing
+  style: DrumStyle
   onDone: (s: ScoreSummary, avgDelta: number | null, latencyAdjustMs: number) => void
   onQuit: () => void
 }
 
 type Feedback = { text: string; cls: string; id: number }
 
-function Session({ level, speed, rookie, wait, onDone, onQuit }: SessionProps) {
+function Session({ level, speed, rookie, wait, backing, style, onDone, onQuit }: SessionProps) {
   const chart = level.chart
   const hw = useRef<HighwayState>(null!)
   const scorer = useRef<Scorer>(null!)
@@ -193,7 +236,30 @@ function Session({ level, speed, rookie, wait, onDone, onQuit }: SessionProps) {
     const bus = ctx.createGain()
     bus.connect(ctx.destination)
     const beatTimes = Array.from({ length: totalBeats }, (_, i) => t0 + i * spb)
-    let nextClick = 0
+
+    // Band: 16th-note steps on the game clock. Count-in is always sticks/clicks.
+    const stepDur = spb / 4
+    const totalSteps = totalBeats * 4
+    const bars = Math.ceil(chart.lengthBeats / chart.beatsPerBar)
+    const barRoots: (number | null)[] = []
+    for (let b = 0; b < bars; b++) {
+      const inBar = timed.filter((n) => Math.floor(chart.notes[n.idx].t / chart.beatsPerBar) === b)
+      barRoots.push(inBar.length ? Math.min(...inBar.map((n) => n.midi)) : (barRoots[b - 1] ?? null))
+    }
+    const playStep = (step: number, at: number) => {
+      const countSteps = countIn * 4
+      if (step < countSteps || backing === 'click') {
+        if (step % 4 === 0) engine.click(at, (step / 4) % chart.beatsPerBar === 0, bus)
+        return
+      }
+      const songStep = step - countSteps
+      playDrumStep(ctx, style, songStep % 16, at, bus)
+      if (backing === 'band' && songStep % 4 === 0) {
+        const root = barRoots[Math.floor(songStep / 4 / chart.beatsPerBar)]
+        if (root !== null && root !== undefined) playChordStab(ctx, root, at, spb * 0.85, bus)
+      }
+    }
+    let nextStep = 0
 
     const bursts: HighwayState['bursts'] = []
     hw.current = {
@@ -257,10 +323,11 @@ function Session({ level, speed, rookie, wait, onDone, onQuit }: SessionProps) {
       } else {
         for (const j of sc.tick(g - adapt)) onGrade(j.idx, j.grade)
       }
-      // Clicks follow the game clock so they pause with it.
-      while (frozenAudio === null && nextClick < beatTimes.length && beatTimes[nextClick] < g + 0.1) {
-        if (beatTimes[nextClick] >= g - 0.02) engine.click(beatTimes[nextClick] + paused, nextClick % chart.beatsPerBar === 0, bus)
-        nextClick++
+      // The band follows the game clock, so it pauses and resumes with you.
+      while (frozenAudio === null && nextStep < totalSteps && t0 + nextStep * stepDur < g + 0.1) {
+        const st = t0 + nextStep * stepDur
+        if (st >= g - 0.02) playStep(nextStep, st + paused)
+        nextStep++
       }
       const beat = Math.floor((g - outLat - t0) / spb)
       setHud({ score: sc.score, combo: sc.combo, mult: sc.multiplier(), beat, waiting: frozenAudio !== null })

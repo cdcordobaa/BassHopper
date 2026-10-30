@@ -11,7 +11,8 @@ export function detectPitch(
   buf: Float32Array,
   rate: number,
   minFreq = 35,
-  maxFreq = 420,
+  // Just above E4 (fret 21 on G): anything higher is the band or a harmonic, not your bass.
+  maxFreq = 350,
 ): PitchResult | null {
   const n = buf.length
   const maxLag = Math.min(n - 32, Math.ceil(rate / minFreq))
@@ -51,17 +52,19 @@ export function detectPitch(
         best = tau
       }
     } else if (best >= 0) {
-      if (best >= minLag) peaks.push(best)
+      peaks.push(best)
       best = -1
       bestVal = -Infinity
     }
   }
-  if (best >= minLag) peaks.push(best)
+  if (best >= 0) peaks.push(best)
   if (peaks.length === 0) return null
 
   let max = 0
   for (const p of peaks) max = Math.max(max, nsdf[p])
   const chosen = peaks.find((p) => nsdf[p] >= K * max)!
+  // Pitch above the bass range (band, harmonics): reject rather than report a sub-octave.
+  if (chosen < minLag) return null
 
   const a = nsdf[chosen - 1]
   const b = nsdf[chosen]
