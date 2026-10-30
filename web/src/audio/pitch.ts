@@ -11,8 +11,9 @@ export function detectPitch(
   buf: Float32Array,
   rate: number,
   minFreq = 35,
-  // Just above E4 (fret 21 on G): anything higher is the band or a harmonic, not your bass.
-  maxFreq = 350,
+  // Just above G4 (fret 24 on G, 392 Hz): anything higher is the band or a harmonic, not your bass.
+  // The band's chords sit at C5 (523 Hz) and up, safely above this.
+  maxFreq = 420,
 ): PitchResult | null {
   const n = buf.length
   const maxLag = Math.min(n - 32, Math.ceil(rate / minFreq))

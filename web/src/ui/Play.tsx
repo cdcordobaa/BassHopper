@@ -5,6 +5,8 @@ import { chartToTab, timeChart } from '../game/chart'
 import { nextLevel, type Level } from '../game/path/worlds'
 import { getProgress, recordRun } from '../game/progress'
 import { NORMAL_WINDOWS, ROOKIE_WINDOWS, Scorer, type Grade, type ScoreSummary } from '../game/scorer'
+import { keyName } from '../jam/theory'
+import { barChordRoots, chartKeyNotes, detectKey } from '../music/key'
 import { midiToName, sameNoteForgiving, STRINGS } from '../music/notes'
 import { Fretboard, marksForMidi, type Mark } from './Fretboard'
 import { Highway, type HighwayState } from './Highway'
@@ -127,6 +129,7 @@ export function Play({ level, onExit, onSetup, onLevel }: Props) {
         <h2>The tab</h2>
         <p className="muted">Each line is a string (G on top, E at the bottom). Numbers are frets; 0 = open string.</p>
         <pre className="tab">{chartToTab(level.chart).join('\n')}</pre>
+        <p className="muted">Key: <b>{keyName(detectKey(chartKeyNotes(level.chart), level.chart.beatsPerBar))}</b> — the band plays chords from this key.</p>
       </section>
       <section className="card row">
         <div className="seg">
@@ -241,11 +244,8 @@ function Session({ level, speed, rookie, wait, backing, style, onDone, onQuit }:
     const stepDur = spb / 4
     const totalSteps = totalBeats * 4
     const bars = Math.ceil(chart.lengthBeats / chart.beatsPerBar)
-    const barRoots: (number | null)[] = []
-    for (let b = 0; b < bars; b++) {
-      const inBar = timed.filter((n) => Math.floor(chart.notes[n.idx].t / chart.beatsPerBar) === b)
-      barRoots.push(inBar.length ? Math.min(...inBar.map((n) => n.midi)) : (barRoots[b - 1] ?? null))
-    }
+    const keyNotes = chartKeyNotes(chart)
+    const barRoots = barChordRoots(keyNotes, detectKey(keyNotes, chart.beatsPerBar), chart.beatsPerBar, bars)
     const playStep = (step: number, at: number) => {
       const countSteps = countIn * 4
       if (step < countSteps || backing === 'click') {

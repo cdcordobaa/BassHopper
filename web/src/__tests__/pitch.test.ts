@@ -16,7 +16,14 @@ function tone(freq: number, harmonics: number[] = [1], phase = 0.3): Float32Arra
 }
 
 describe('detectPitch', () => {
-  it.each([28, 33, 38, 43, 50, 55, 62])('finds MIDI %i (pure sine)', (midi) => {
+  it('finds middle C and the 24th fret on G with a real bass tone', () => {
+    for (const midi of [60, 64, 67]) {
+      const p = detectPitch(tone(midiToFreq(midi), [1, 0.7, 0.4]), RATE)
+      expect(Math.round(freqToMidiFloat(p!.freq))).toBe(midi)
+    }
+  })
+
+  it.each([28, 33, 38, 43, 50, 55, 60, 62, 67])('finds MIDI %i (pure sine)', (midi) => {
     const p = detectPitch(tone(midiToFreq(midi)), RATE)
     expect(p).not.toBeNull()
     expect(Math.round(freqToMidiFloat(p!.freq))).toBe(midi)
@@ -56,5 +63,19 @@ describe('detectPitch range', () => {
   it('rejects sounds above the bass range instead of reporting a lower octave', () => {
     // E5 (659 Hz) would otherwise be reported as E4 via its second period.
     expect(detectPitch(tone(midiToFreq(76), [1, 0.5, 0.3]), RATE)).toBeNull()
+  })
+})
+
+describe('band bleed', () => {
+  // The backing band's chord stabs (root + octave + octave-fifth, roots C5..B5) leak into the mic.
+  // After the engine's 1200 Hz low-pass, none of them may read as a bass note.
+  it.each(Array.from({ length: 12 }, (_, i) => 72 + i))('ignores a chord stab on MIDI %i', (root) => {
+    const buf = new Float32Array(N)
+    for (const iv of [0, 12, 19]) {
+      const f = midiToFreq(root + iv)
+      for (let h = 1; h * f < 1200; h++)
+        for (let i = 0; i < N; i++) buf[i] += (0.3 / h) * Math.sin(2 * Math.PI * f * h * (i / RATE) + iv)
+    }
+    expect(detectPitch(buf, RATE)).toBeNull()
   })
 })

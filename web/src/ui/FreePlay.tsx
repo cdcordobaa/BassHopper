@@ -150,6 +150,9 @@ function NoteHunt() {
   )
 }
 
+// A full-size neck: the G string's 17th fret is middle C, 24th is G4.
+const FREE_FRETS = 24
+
 export function FreePlay({ onBack, onSetup }: { onBack: () => void; onSetup: () => void }) {
   const e = useEngine()
   const midi = useCurrentNote()
@@ -162,7 +165,7 @@ export function FreePlay({ onBack, onSetup }: { onBack: () => void; onSetup: () 
 
   const allNames: Mark[] = showAll
     ? STRINGS.flatMap((_, s) =>
-        Array.from({ length: 13 }, (_, f) => {
+        Array.from({ length: FREE_FRETS + 1 }, (_, f) => {
           const name = midiToName(positionToMidi(s as StringIndex, f), false)
           return { string: s as StringIndex, fret: f, kind: 'safe' as const, label: name.includes('#') ? '' : name }
         }).filter((m) => m.label),
@@ -181,8 +184,16 @@ export function FreePlay({ onBack, onSetup }: { onBack: () => void; onSetup: () 
         </p>
       )}
       <section className="card">
-        <div className="big-note">{midi !== null ? midiToName(midi, false) : '·'}</div>
-        <Fretboard marks={[...allNames, ...marksForMidi(midi, 'played')]} />
+        <div className="big-note">
+          {midi !== null ? midiToName(midi) : '·'}
+          {midi === 60 && <small> middle C</small>}
+        </div>
+        <div className="fb-scroll">
+          <Fretboard marks={[...allNames, ...marksForMidi(midi, 'played', FREE_FRETS)]} frets={FREE_FRETS} showMiddleC />
+        </div>
+        <p className="muted">
+          Note names carry the piano octave: middle C is C4 (dashed ring, 17th fret on G). Your open E is E1, way down on the piano's left.
+        </p>
         <div className="row">
           <label className="check">
             <input type="checkbox" checked={showAll} onChange={(ev) => setShowAll(ev.target.checked)} /> Show all natural note names
@@ -190,7 +201,7 @@ export function FreePlay({ onBack, onSetup }: { onBack: () => void; onSetup: () 
         </div>
         <div className="trail">
           {trail.map((m, i) => (
-            <span key={i}>{midiToName(m, false)}</span>
+            <span key={i}>{midiToName(m)}</span>
           ))}
         </div>
       </section>
