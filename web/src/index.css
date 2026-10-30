@@ -164,3 +164,6 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .detect-warn { color: var(--warn); }
 .detect-bad { color: var(--bad); }
 .detect-idle { color: var(--muted); }
+.wait-banner { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); background: rgba(23,19,37,0.92); border: 1px solid var(--accent); padding: 0.6rem 1.2rem; border-radius: 12px; font-size: 1.2rem; white-space: nowrap; animation: pulse 0.9s infinite alternate; }
+.wait-banner b { color: var(--accent2); }
+.g-wait { color: var(--muted); font-size: 1.2rem; }

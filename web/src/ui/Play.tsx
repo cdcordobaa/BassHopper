@@ -4,7 +4,7 @@ import { chartToTab, timeChart } from '../game/chart'
 import { nextLevel, type Level } from '../game/path/worlds'
 import { getProgress, recordRun } from '../game/progress'
 import { NORMAL_WINDOWS, ROOKIE_WINDOWS, Scorer, type Grade, type ScoreSummary } from '../game/scorer'
-import { midiToName, STRINGS } from '../music/notes'
+import { midiToName, sameNoteForgiving, STRINGS } from '../music/notes'
 import { Fretboard, marksForMidi, type Mark } from './Fretboard'
 import { Highway, type HighwayState } from './Highway'
 import { useCurrentNote, useEngine } from './hooks'
@@ -18,12 +18,16 @@ interface Props {
   onLevel: (id: string) => void
 }
 
-type Phase = { name: 'intro' } | { name: 'playing'; run: number } | { name: 'done'; summary: ScoreSummary; xp: number; avgDelta: number | null }
+type Phase =
+  | { name: 'intro' }
+  | { name: 'playing'; run: number }
+  | { name: 'done'; summary: ScoreSummary; xp: number; avgDelta: number | null; latencyAdjustMs: number }
 
 export function Play({ level, onExit, onSetup, onLevel }: Props) {
   const e = useEngine()
   const [speed, setSpeed] = useState(1)
-  const [rookie, setRookie] = useState(false)
+  const [rookie, setRookie] = useState(true)
+  const [wait, setWait] = useState(true)
   const [phase, setPhase] = useState<Phase>({ name: 'intro' })
   const runs = useRef(0)
 
@@ -36,10 +40,11 @@ export function Play({ level, onExit, onSetup, onLevel }: Props) {
         level={level}
         speed={speed}
         rookie={rookie}
+        wait={wait}
         onQuit={() => setPhase({ name: 'intro' })}
-        onDone={(summary, avgDelta) => {
+        onDone={(summary, avgDelta, latencyAdjustMs) => {
           const xp = recordRun(level.id, summary)
-          setPhase({ name: 'done', summary, xp, avgDelta })
+          setPhase({ name: 'done', summary, xp, avgDelta, latencyAdjustMs })
         }}
       />
     )
@@ -52,7 +57,7 @@ export function Play({ level, onExit, onSetup, onLevel }: Props) {
   }
 
   if (phase.name === 'done') {
-    const { summary: s, xp, avgDelta } = phase
+    const { summary: s, xp, avgDelta, latencyAdjustMs } = phase
     const next = nextLevel(level.id)
     const tendency =
       avgDelta === null || Math.abs(avgDelta) < 0.015
@@ -72,10 +77,13 @@ export function Play({ level, onExit, onSetup, onLevel }: Props) {
           <span className="g-perfect">{s.perfect} perfect</span> · <span className="g-good">{s.good} good</span> · <span className="g-miss">{s.miss} miss</span>
         </p>
         <p>{tendency}</p>
-        {s.stars < 2 && <p className="muted">Get 2★ to unlock the next level. Try slower speed or Rookie mode.</p>}
+        {Math.abs(latencyAdjustMs) >= 15 && (
+          <p className="muted">🎯 Latency auto-adjusted by {latencyAdjustMs > 0 ? '+' : ''}{latencyAdjustMs} ms — timing will feel fairer next time.</p>
+        )}
+        {s.stars < 2 && <p className="muted">Next level unlocked anyway. Come back for 2★+ when you feel ready — repetition is how it sticks.</p>}
         <div className="row center">
           <button className="primary" onClick={start}>↻ Retry</button>
-          {next && s.stars >= 2 && <button className="primary" onClick={() => onLevel(next.id)}>Next: {next.title} →</button>}
+          {next && <button className="primary" onClick={() => onLevel(next.id)}>Next: {next.title} →</button>}
           <button className="ghost" onClick={onExit}>Map</button>
         </div>
       </div>
@@ -112,6 +120,9 @@ export function Play({ level, onExit, onSetup, onLevel }: Props) {
           ))}
         </div>
         <label className="check">
+          <input type="checkbox" checked={wait} onChange={(ev) => setWait(ev.target.checked)} /> 🐢 Wait for me (highway stops until you play the note)
+        </label>
+        <label className="check">
           <input type="checkbox" checked={rookie} onChange={(ev) => setRookie(ev.target.checked)} /> Rookie timing (wider windows)
         </label>
         <span className="muted">{Math.round(level.chart.bpm * speed)} BPM</span>
@@ -132,17 +143,18 @@ interface SessionProps {
   level: Level
   speed: number
   rookie: boolean
-  onDone: (s: ScoreSummary, avgDelta: number | null) => void
+  wait: boolean
+  onDone: (s: ScoreSummary, avgDelta: number | null, latencyAdjustMs: number) => void
   onQuit: () => void
 }
 
 type Feedback = { text: string; cls: string; id: number }
 
-function Session({ level, speed, rookie, onDone, onQuit }: SessionProps) {
+function Session({ level, speed, rookie, wait, onDone, onQuit }: SessionProps) {
   const chart = level.chart
   const hw = useRef<HighwayState>(null!)
   const scorer = useRef<Scorer>(null!)
-  const [hud, setHud] = useState({ score: 0, combo: 0, mult: 1, beat: -99 })
+  const [hud, setHud] = useState({ score: 0, combo: 0, mult: 1, beat: -99, waiting: false })
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [target, setTarget] = useState<Mark[]>([])
   const playing = useCurrentNote()
@@ -155,27 +167,39 @@ function Session({ level, speed, rookie, onDone, onQuit }: SessionProps) {
     const countIn = chart.beatsPerBar
     const t0 = ctx.currentTime + 0.6
     const totalBeats = countIn + Math.ceil(chart.lengthBeats)
+    // Note times live on a "game clock". In wait mode the game clock stops at an unplayed note;
+    // `paused` is how far it lags the audio clock. In timed mode paused stays 0.
     const timed = timeChart(chart, t0, bpm, countIn)
     const sc = new Scorer(timed, rookie ? ROOKIE_WINDOWS : NORMAL_WINDOWS)
     scorer.current = sc
     const outLat = engine.outputLatency()
-    const latency = () => (engine.profile?.latencyMs ?? 0) / 1000
+    const baseLatency = (engine.profile?.latencyMs ?? 0) / 1000
+    let paused = 0
+    let frozenAudio: number | null = null
+    let frozenGame = 0
+    const gameNow = () => (frozenAudio !== null ? frozenGame : engine.now() - paused)
+
+    // Latency learning: raw offsets (before correction) of correct notes from their targets;
+    // the correction is their recent median, so it can't feed back on itself.
+    const offsets: number[] = []
+    let adapt = 0
+    const learn = (d: number) => {
+      offsets.push(d)
+      const recent = offsets.slice(-8).sort((a, b) => a - b)
+      if (recent.length >= 3) adapt = Math.max(-0.3, Math.min(0.3, recent[Math.floor(recent.length / 2)]))
+    }
     const deltas: number[] = []
 
     const bus = ctx.createGain()
     bus.connect(ctx.destination)
-    const beatTimes: number[] = []
-    for (let i = 0; i < totalBeats; i++) {
-      const t = t0 + i * spb
-      beatTimes.push(t)
-      engine.click(t, i % chart.beatsPerBar === 0, bus)
-    }
+    const beatTimes = Array.from({ length: totalBeats }, (_, i) => t0 + i * spb)
+    let nextClick = 0
 
     const bursts: HighwayState['bursts'] = []
     hw.current = {
       notes: timed,
       grades: sc.grades,
-      now: () => engine.now() - outLat,
+      now: () => gameNow() - outLat,
       beatTimes: beatTimes.slice(countIn),
       beatsPerBar: chart.beatsPerBar,
       showNames: !!level.showNames,
@@ -184,7 +208,7 @@ function Session({ level, speed, rookie, onDone, onQuit }: SessionProps) {
 
     const say = (text: string, cls: string) => setFeedback({ text, cls, id: ++fbId.current })
     const onGrade = (idx: number, grade: Grade, delta?: number) => {
-      if (grade !== 'miss') bursts.push({ string: timed[idx].string, time: engine.now() - outLat, grade })
+      if (grade !== 'miss') bursts.push({ string: timed[idx].string, time: gameNow() - outLat, grade })
       if (delta !== undefined) deltas.push(delta)
       const timing = delta === undefined || Math.abs(delta) < 0.02 ? '' : delta > 0 ? ' · late' : ' · early'
       say(grade === 'miss' ? 'MISS' : grade.toUpperCase() + (grade === 'good' ? timing : ''), `g-${grade}`)
@@ -192,30 +216,66 @@ function Session({ level, speed, rookie, onDone, onQuit }: SessionProps) {
 
     const offNote = engine.onNote((ev) => {
       if (ev.type !== 'on') return
-      const r = sc.onNote(ev.midi, ev.time - latency())
+      if (frozenAudio !== null) {
+        const next = sc.nextUnjudged()
+        if (!next) return
+        if (sameNoteForgiving(ev.midi, next.midi)) {
+          // Played within the normal window after the freeze still counts by timing.
+          const late = ev.time - baseLatency - frozenAudio
+          const grade: Grade = late <= sc.windows.perfect ? 'perfect' : 'good'
+          sc.hit(next.idx, grade)
+          onGrade(next.idx, grade, late <= sc.windows.good ? late : undefined)
+          paused += engine.now() - frozenAudio
+          frozenAudio = null
+        } else say(`You played ${midiToName(ev.midi, false)}, needed ${midiToName(next.midi, false)}`, 'g-wrong')
+        return
+      }
+      const t = ev.time - baseLatency - paused
+      const d = sc.nearestSamePitchDelta(ev.midi, t, 0.4)
+      const r = sc.onNote(ev.midi, t - adapt)
+      if (d !== null) learn(d)
       if (!r) return
       if (r.kind === 'wrong') say(`You played ${r.played}, needed ${r.needed}`, 'g-wrong')
       else onGrade(r.idx, r.grade, r.delta)
     })
 
-    const end = t0 + totalBeats * spb + 0.8
     let raf = 0
     let lastTarget = -1
+    let finished = false
     const loop = () => {
       raf = requestAnimationFrame(loop)
-      const now = engine.now()
-      for (const j of sc.tick(now - latency())) onGrade(j.idx, j.grade)
-      const beat = Math.floor((now - outLat - t0) / spb)
-      setHud({ score: sc.score, combo: sc.combo, mult: sc.multiplier(), beat })
-      const nextIdx = sc.grades.findIndex((g) => g === null)
+      const g = gameNow()
+      const next = sc.nextUnjudged()
+      if (wait) {
+        // Hold the highway when the next note reaches the line unplayed.
+        // Freeze with the gem sitting exactly on the hit line (past it, perspective hides it).
+        if (frozenAudio === null && next && g - adapt >= next.time) {
+          frozenGame = next.time + adapt
+          frozenAudio = engine.now()
+          say('Waiting for you…', 'g-wait')
+        }
+      } else {
+        for (const j of sc.tick(g - adapt)) onGrade(j.idx, j.grade)
+      }
+      // Clicks follow the game clock so they pause with it.
+      while (frozenAudio === null && nextClick < beatTimes.length && beatTimes[nextClick] < g + 0.1) {
+        if (beatTimes[nextClick] >= g - 0.02) engine.click(beatTimes[nextClick] + paused, nextClick % chart.beatsPerBar === 0, bus)
+        nextClick++
+      }
+      const beat = Math.floor((g - outLat - t0) / spb)
+      setHud({ score: sc.score, combo: sc.combo, mult: sc.multiplier(), beat, waiting: frozenAudio !== null })
+      const nextIdx = next ? next.idx : -1
       if (nextIdx !== lastTarget) {
         lastTarget = nextIdx
-        const n = timed[nextIdx]
-        setTarget(n ? [{ string: n.string, fret: n.fret, kind: 'target', label: String(n.fret) }] : [])
+        setTarget(next ? [{ string: next.string, fret: next.fret, kind: 'target', label: String(next.fret) }] : [])
       }
-      if (now > end) {
+      if (!finished && !next && g > beatTimes[beatTimes.length - 1] + spb + 0.8) {
+        finished = true
         cancelAnimationFrame(raf)
-        onDone(sc.summary(), deltas.length ? deltas.reduce((a, b) => a + b, 0) / deltas.length : null)
+        if (offsets.length >= 6 && Math.abs(adapt) >= 0.015) {
+          engine.updateProfile({ latencyMs: Math.round((baseLatency + adapt) * 1000) })
+        }
+        onDone(sc.summary(), deltas.length ? deltas.reduce((a, b) => a + b, 0) / deltas.length : null, Math.round(adapt * 1000))
       }
     }
     raf = requestAnimationFrame(loop)
@@ -246,6 +306,11 @@ function Session({ level, speed, rookie, onDone, onQuit }: SessionProps) {
       <div className="stage">
         <Highway state={hw} />
         {counting && <div className="countin">{hud.beat + countIn + 1}</div>}
+        {hud.waiting && target[0] && (
+          <div className="wait-banner">
+            Play <b>{target[0].fret === 0 ? 'open' : `fret ${target[0].fret} on`} {STRINGS[target[0].string].name}</b> to continue
+          </div>
+        )}
         {feedback && (
           <div key={feedback.id} className={`feedback ${feedback.cls}`}>
             {feedback.text}

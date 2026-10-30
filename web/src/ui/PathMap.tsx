@@ -4,7 +4,8 @@ import { useProgress, type Progress } from '../game/progress'
 export function isUnlocked(id: string, p: Progress): boolean {
   const i = ALL_LEVELS.findIndex((l) => l.id === id)
   if (i <= 0) return true
-  return (p.levels[ALL_LEVELS[i - 1].id]?.stars ?? 0) >= 2
+  // Finishing a level (any score) unlocks the next: progress should never block practice.
+  return (p.levels[ALL_LEVELS[i - 1].id]?.plays ?? 0) >= 1
 }
 
 const UPCOMING = [

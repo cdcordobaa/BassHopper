@@ -51,7 +51,7 @@ export class Scorer {
   combo = 0
   maxCombo = 0
   score = 0
-  private windows: Windows
+  readonly windows: Windows
 
   constructor(notes: TimedNote[], windows: Windows = NORMAL_WINDOWS) {
     this.notes = notes
@@ -93,6 +93,31 @@ export class Scorer {
       }
     }
     return null
+  }
+
+  /** First note not yet judged. */
+  nextUnjudged(): TimedNote | undefined {
+    return this.notes.find((n) => this.grades[n.idx] === null)
+  }
+
+  /** Force a judgment (used by wait mode when you finally play the held note). */
+  hit(idx: number, grade: Grade): Judgment {
+    this.grade(idx, grade)
+    return { kind: 'judgment', idx, grade }
+  }
+
+  /**
+   * Signed offset from t to the nearest unjudged note of the same pitch within maxDist.
+   * Lets a session learn latency even when it is too far off for notes to score.
+   */
+  nearestSamePitchDelta(midi: number, t: number, maxDist: number): number | null {
+    let best: number | null = null
+    for (const n of this.notes) {
+      if (this.grades[n.idx] !== null || !sameNoteForgiving(midi, n.midi)) continue
+      const d = t - n.time
+      if (Math.abs(d) <= maxDist && (best === null || Math.abs(d) < Math.abs(best))) best = d
+    }
+    return best
   }
 
   /** Marks notes whose window has passed as misses. */

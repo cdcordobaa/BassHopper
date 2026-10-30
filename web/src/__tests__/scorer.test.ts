@@ -66,3 +66,22 @@ describe('Scorer', () => {
     expect(s.summary()).toMatchObject({ perfect: 3, stars: 3, maxCombo: 3, accuracy: 1 })
   })
 })
+
+describe('Scorer helpers for wait mode and latency learning', () => {
+  const timed = timeChart(chart('E0 A0 A3'), 0, 60, 0)
+
+  it('finds the nearest same-pitch note even outside the scoring window', () => {
+    const s = new Scorer(timed)
+    expect(s.onNote(33, 1.25)).toBeNull()
+    expect(s.nearestSamePitchDelta(33, 1.25, 0.35)).toBeCloseTo(0.25)
+    expect(s.nearestSamePitchDelta(33, 1.5, 0.35)).toBeNull()
+  })
+
+  it('force-hits the next unjudged note', () => {
+    const s = new Scorer(timed)
+    expect(s.nextUnjudged()?.idx).toBe(0)
+    s.hit(0, 'good')
+    expect(s.nextUnjudged()?.idx).toBe(1)
+    expect(s.combo).toBe(1)
+  })
+})
