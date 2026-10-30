@@ -1,0 +1,47 @@
+/* Riff Arena */
+.arena code { background: var(--panel2); padding: 0.1rem 0.4rem; border-radius: 6px; }
+.arena-songs { display: flex; flex-direction: column; gap: 0.7rem; }
+.arena-song { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; padding: 0.8rem 1rem; }
+.arena-song-main { flex: 1; min-width: 220px; display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; text-align: left; background: transparent; border: none; padding: 0; }
+.arena-song-main:hover:not(:disabled) { background: transparent; }
+.arena-song-main b { font-size: 1.1rem; }
+.arena-badges { display: flex; gap: 0.4rem; }
+.badge { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.1rem 0.5rem; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.badge.on { border-color: var(--accent); color: var(--text); }
+.arena-tiers { display: flex; gap: 0.9rem; }
+.arena-tiers.center { justify-content: center; }
+.arena-tier { display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+button.danger { background: var(--bad); border-color: var(--bad); font-weight: 700; }
+
+.arena-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.8rem; margin: 0.8rem 0; }
+.arena-form label { display: flex; flex-direction: column; gap: 0.3rem; }
+.arena-form label > span { font-size: 0.85rem; color: var(--muted); }
+.arena input[type='text'], .arena input[type='number'] { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); padding: 0.5rem; border-radius: 8px; }
+.arena input[type='number'] { width: 4.5rem; }
+.arena-progress { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 0.3rem; }
+.arena-bar { height: 10px; background: var(--panel2); border-radius: 5px; overflow: hidden; }
+.arena-bar div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width 0.3s; }
+
+.arena-diffs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.7rem; margin-bottom: 0.8rem; }
+.arena-diff { display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; text-align: left; }
+.arena-diff.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 18px #a06bff44; }
+.arena-loop { margin-top: 0.8rem; }
+.arena-loop label { display: flex; flex-direction: column; gap: 0.2rem; }
+
+.arena-nudge { display: inline-flex; align-items: center; gap: 0.3rem; }
+.arena-nudge button { padding: 0.3rem 0.55rem; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.arena-offset { min-width: 4.5rem; text-align: right; font-variant-numeric: tabular-nums; }
+
+.arena-play .hud-title { display: flex; flex-direction: column; }
+.arena-loop-tag { font-size: 0.8rem; color: var(--accent2); font-weight: 600; }
+.arena-status { font-size: 3rem; }
+.arena-controls { display: flex; gap: 1.2rem; align-items: center; justify-content: center; flex-wrap: wrap; font-size: 0.85rem; color: var(--muted); }
+.arena-controls label { display: inline-flex; align-items: center; gap: 0.4rem; }
+.arena-controls input[type='range'] { width: 110px; }
+.arena-tap { gap: 0.4rem; }
+.arena-tap button { padding: 0.3rem 0.7rem; font-size: 0.85rem; }
+
+.arena-transport input[type='range'] { flex: 1; min-width: 160px; width: auto; }
+.arena-time { font-variant-numeric: tabular-nums; }
+
+@media (max-width: 700px) { .arena-diffs { grid-template-columns: 1fr; } }

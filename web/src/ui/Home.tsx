@@ -3,7 +3,7 @@ import { ALL_LEVELS } from '../game/path/worlds'
 import { isUnlocked } from './PathMap'
 import { lastInput, reconnectLast, useEngine } from './hooks'
 
-export function Home({ go }: { go: (screen: 'path' | 'free' | 'setup', levelId?: string) => void }) {
+export function Home({ go }: { go: (screen: 'path' | 'free' | 'setup' | 'arena' | 'jam', levelId?: string) => void }) {
   const e = useEngine()
   const p = useProgress()
   const lvl = playerLevel(p.xp)
@@ -14,9 +14,16 @@ export function Home({ go }: { go: (screen: 'path' | 'free' | 'setup', levelId?:
   return (
     <div className="screen home">
       <div className="hero">
-        <h1 className="logo">Bass<span>Hoper</span></h1>
+        <h1 className="logo">Bass<span>Hopper</span></h1>
         <p className="muted">Your bass. Your path. Turn it up.</p>
       </div>
+
+      {!window.isSecureContext && (
+        <p className="warn">
+          Opened over Wi-Fi: browsers block the mic and audio engine here. Open <b>http://localhost:{location.port}</b> on the
+          computer running BassHopper to play.
+        </p>
+      )}
 
       <div className="player">
         <div>
@@ -57,16 +64,16 @@ export function Home({ go }: { go: (screen: 'path' | 'free' | 'setup', levelId?:
           <b>Setup & Tuner</b>
           <span>Input, levels, calibration</span>
         </button>
-        <div className="tile soon">
+        <button className="tile" onClick={() => go('arena')}>
           <span className="tile-icon">🎤</span>
           <b>Riff Arena</b>
-          <span>Real songs · Milestone 2</span>
-        </div>
-        <div className="tile soon">
+          <span>Play along with real songs</span>
+        </button>
+        <button className="tile" onClick={() => go('jam')}>
           <span className="tile-icon">🎛️</span>
           <b>Jam Room</b>
-          <span>Backing tracks · Milestone 3</span>
-        </div>
+          <span>Backing band · record your own riffs</span>
+        </button>
       </div>
     </div>
   )

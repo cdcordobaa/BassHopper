@@ -24,6 +24,11 @@ export function Setup({ onBack }: { onBack: () => void }) {
   const [beat, setBeat] = useState<{ n: number; counting: boolean } | null>(null)
 
   async function loadDevices() {
+    // Browsers hide navigator.mediaDevices on plain-http LAN addresses (e.g. a tablet on Wi-Fi).
+    if (!navigator.mediaDevices) {
+      setMsg('The microphone only works when BassHopper is opened at http://localhost on the computer running it (browsers block mics on plain http Wi-Fi addresses).')
+      return
+    }
     try {
       const list = await listAudioInputs()
       setDevices(list)

@@ -1,4 +1,4 @@
-# BassHoper — Design Spec
+# BassHopper — Design Spec
 
 Date: 2026-10-29
 Status: Approved (brainstorming session)
@@ -70,7 +70,7 @@ Worlds → Levels → Challenges, defined as data (TS/JSON). 2 stars unlocks nex
 
 ### Progress
 
-M1: `localStorage`. M2+: `progress.json` in `~/BassHoper/library/` via helper.
+M1: `localStorage`. M2+: `progress.json` in `~/BassHopper/library/` via helper.
 
 ## Testing
 

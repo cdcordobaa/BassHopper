@@ -17,6 +17,20 @@ export interface Chart {
   notes: ChartNote[]
   /** Total length in beats (includes trailing rests). */
   lengthBeats: number
+  /** Tempo changes, sorted by beat; the first entry is at beat 0. Absent = constant `bpm`. */
+  tempoMap?: TempoPoint[]
+  /** Named song sections (verse, chorus…) starting at a beat. */
+  sections?: ChartSection[]
+}
+
+export interface TempoPoint {
+  beat: number
+  bpm: number
+}
+
+export interface ChartSection {
+  beat: number
+  name: string
 }
 
 export interface TimedNote {
@@ -55,11 +69,51 @@ export function parseNotation(src: string, step = 1): { notes: ChartNote[]; leng
   return { notes, lengthBeats: t }
 }
 
+/**
+ * Seconds from beat 0 to `beat`, following the tempo map if there is one.
+ * `speed` scales playback (0.5 = half speed, so twice the seconds).
+ */
+export function beatToSec(chart: Pick<Chart, 'bpm' | 'tempoMap'>, beat: number, speed = 1): number {
+  const map = chart.tempoMap
+  if (!map?.length) return (beat * 60) / (chart.bpm * speed)
+  let sec = 0
+  let from = 0
+  let bpm = map[0].bpm
+  for (let i = 1; i < map.length && map[i].beat < beat; i++) {
+    sec += ((map[i].beat - from) * 60) / bpm
+    from = map[i].beat
+    bpm = map[i].bpm
+  }
+  return (sec + ((beat - from) * 60) / bpm) / speed
+}
+
+/** Inverse of beatToSec. */
+export function secToBeat(chart: Pick<Chart, 'bpm' | 'tempoMap'>, sec: number, speed = 1): number {
+  const map = chart.tempoMap
+  const s = sec * speed
+  if (!map?.length) return (s * chart.bpm) / 60
+  let at = 0
+  let from = 0
+  let bpm = map[0].bpm
+  for (let i = 1; i < map.length; i++) {
+    const segEnd = at + ((map[i].beat - from) * 60) / bpm
+    if (segEnd > s) break
+    at = segEnd
+    from = map[i].beat
+    bpm = map[i].bpm
+  }
+  return from + ((s - at) * bpm) / 60
+}
+
 export function timeChart(chart: Chart, startTime: number, bpm: number, countInBeats: number): TimedNote[] {
   const spb = 60 / bpm
+  const speed = bpm / chart.bpm
+  const at = chart.tempoMap?.length
+    ? (beat: number) => startTime + countInBeats * spb + beatToSec(chart, beat, speed)
+    : (beat: number) => startTime + (countInBeats + beat) * spb
   return chart.notes.map((n, idx) => ({
     idx,
-    time: startTime + (countInBeats + n.t) * spb,
+    time: at(n.t),
     midi: positionToMidi(n.string, n.fret),
     string: n.string,
     fret: n.fret,
