@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { latencyTest, measureNoise } from '../audio/calibration'
+import { autoLevel, latencyTest, measureNoise } from '../audio/calibration'
 import type { InputKind } from '../audio/InputSource'
 import { createDeviceSource, createFileSource, listAudioInputs } from '../audio/sources'
+import { DetectionStatus } from './DetectionStatus'
 import { LevelMeter } from './LevelMeter'
 import { Tuner } from './Tuner'
 import { rememberInput, useEngine } from './hooks'
@@ -19,6 +20,7 @@ export function Setup({ onBack }: { onBack: () => void }) {
   const [deviceId, setDeviceId] = useState<string>('')
   const [busy, setBusy] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
+  const [levelMsg, setLevelMsg] = useState<string | null>(null)
   const [beat, setBeat] = useState<{ n: number; counting: boolean } | null>(null)
 
   async function loadDevices() {
@@ -49,6 +51,17 @@ export function Setup({ onBack }: { onBack: () => void }) {
     const gate = await measureNoise(e)
     e.updateProfile({ gate })
     setMsg(`Noise gate set to ${gate.toFixed(4)}.`)
+    setBusy(null)
+  }
+
+  async function runAutoLevel() {
+    setBusy('auto')
+    const r = await autoLevel(e, (step) =>
+      setMsg(step === 'silence' ? 'Step 1/2: stay silent — rest your hand on the strings…' : 'Step 2/2: pluck open E over and over, like you normally would!'),
+    )
+    if (r.ok) e.updateProfile({ gainDb: r.gainDb, gate: r.gate })
+    setLevelMsg(r.message)
+    setMsg(null)
     setBusy(null)
   }
 
@@ -110,7 +123,14 @@ export function Setup({ onBack }: { onBack: () => void }) {
           <section className="card">
             <h2>2 · Level</h2>
             <p className="muted">Pluck hard: the bar should get near the right but stay out of the red. When you're silent it should sit left of the white line.</p>
+            <div className="row">
+              <button className="primary" disabled={!!busy} onClick={runAutoLevel}>{busy === 'auto' ? 'Listening…' : '✨ Auto-level'}</button>
+              <span className="muted">Sets gain and noise gate for you (5 seconds).</span>
+            </div>
+            {busy === 'auto' && msg && <p className="beat-flash play">{msg}</p>}
+            {levelMsg && <p className="muted">{levelMsg}</p>}
             <LevelMeter />
+            <DetectionStatus />
             <div className="sliders">
               <label>
                 Gain <b>{p.gainDb} dB</b>

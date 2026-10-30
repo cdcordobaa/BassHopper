@@ -66,3 +66,56 @@ export async function latencyTest(
     total: beats,
   }
 }
+
+function collectRms(engine: AudioEngine, ms: number): Promise<number[]> {
+  const levels: number[] = []
+  const off = engine.onFrame((f) => levels.push(f.rms))
+  return new Promise((resolve) =>
+    setTimeout(() => {
+      off()
+      resolve(levels.sort((a, b) => a - b))
+    }, ms),
+  )
+}
+
+const pct = (sorted: number[], p: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] ?? 0
+
+export interface AutoLevelResult {
+  gainDb: number
+  gate: number
+  ok: boolean
+  message: string
+}
+
+const TARGET_PEAK = 0.15
+
+/**
+ * Two steps: silence (room noise), then plucking. Sets gain so plucks peak near TARGET_PEAK
+ * and the gate between the (re-scaled) noise floor and the playing level.
+ */
+export async function autoLevel(engine: AudioEngine, onStep: (step: 'silence' | 'play') => void): Promise<AutoLevelResult> {
+  const startGain = engine.profile?.gainDb ?? 0
+  onStep('silence')
+  const noise = pct(await collectRms(engine, 2000), 0.95)
+  onStep('play')
+  const playing = pct(await collectRms(engine, 3000), 0.9)
+  if (playing < noise * 2 || playing < 1e-4) {
+    return { gainDb: startGain, gate: engine.profile?.gate ?? 0.01, ok: false, message: "Couldn't hear the bass over the room noise. Move the mic closer to the amp speaker or turn the amp up, then try again." }
+  }
+  const change = Math.max(-12 - startGain, Math.min(36 - startGain, 20 * Math.log10(TARGET_PEAK / playing)))
+  const gainDb = Math.round(startGain + change)
+  const scale = 10 ** ((gainDb - startGain) / 20)
+  const noiseAfter = noise * scale
+  const playAfter = playing * scale
+  // Geometric middle between noise and playing, biased toward noise so soft notes still count.
+  const gate = Math.max(0.001, Math.min(playAfter * 0.25, Math.sqrt(noiseAfter * 2 * playAfter * 0.1) || playAfter * 0.1))
+  const capped = gainDb >= 36 && playAfter < TARGET_PEAK * 0.5
+  return {
+    gainDb,
+    gate,
+    ok: true,
+    message: capped
+      ? `Gain is maxed out and the signal is still quiet. Move the mic closer to the amp or turn the amp up. (gain ${gainDb} dB, gate ${gate.toFixed(4)})`
+      : `Levels set: gain ${gainDb} dB, gate ${gate.toFixed(4)}. Now play — the readout below should say "Hearing …".`,
+  }
+}

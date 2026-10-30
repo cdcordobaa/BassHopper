@@ -159,3 +159,8 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .trail span { background: var(--panel2); padding: 0.2rem 0.6rem; border-radius: 6px; font-weight: 700; }
 .hunt-target { font-size: 2rem; text-align: center; }
 .hunt-target b { font-size: 4rem; color: var(--accent2); }
+.detect { margin-top: 0.6rem; padding: 0.5rem 0.8rem; border-radius: 8px; background: var(--panel2); font-weight: 600; }
+.detect-good { color: var(--ok); }
+.detect-warn { color: var(--warn); }
+.detect-bad { color: var(--bad); }
+.detect-idle { color: var(--muted); }

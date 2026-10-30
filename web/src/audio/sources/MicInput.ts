@@ -26,6 +26,6 @@ export class MicInput implements InputSource {
   }
 
   defaultProfile(): InputProfile {
-    return { gainDb: 6, bassBoostDb: 6, gate: 0.01, latencyMs: 60, channel: 0 }
+    return { gainDb: 12, bassBoostDb: 6, gate: 0.003, latencyMs: 60, channel: 0 }
   }
 }
