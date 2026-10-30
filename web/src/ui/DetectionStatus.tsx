@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { freqToMidiFloat, midiToName } from '../music/notes'
 import { useEngine, useLatestFrame } from './hooks'
 
@@ -5,6 +6,8 @@ import { useEngine, useLatestFrame } from './hooks'
 export function DetectionStatus() {
   const e = useEngine()
   const f = useLatestFrame()
+  // Hold the last clear reading briefly so transition frames between notes don't flicker.
+  const lastGood = useRef<{ text: string; time: number } | null>(null)
   const gate = e.profile?.gate ?? 0.01
   let cls = 'idle'
   let text = 'Play a note…'
@@ -18,7 +21,12 @@ export function DetectionStatus() {
     } else {
       cls = 'good'
       text = `Hearing ${midiToName(Math.round(freqToMidiFloat(f.freq)))} · ${f.freq.toFixed(1)} Hz · clarity ${f.clarity.toFixed(2)}`
+      lastGood.current = { text, time: f.time }
     }
+  }
+  if (cls !== 'good' && lastGood.current && f && f.time - lastGood.current.time < 0.5) {
+    cls = 'good'
+    text = lastGood.current.text
   }
   return <div className={`detect detect-${cls}`}>{text}</div>
 }
