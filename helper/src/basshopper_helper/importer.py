@@ -17,6 +17,22 @@ from .tabs import build_chart, load_score, pick_track
 _PEAK = 0.89
 
 
+def file_tags(path: Path) -> tuple[str, str]:
+    """(title, artist) from an audio file's tags, blank when missing."""
+    try:
+        import mutagen
+
+        f = mutagen.File(str(path), easy=True)
+        tags = (f.tags or {}) if f is not None else {}
+
+        def first(key: str) -> str:
+            return str((tags.get(key) or [''])[0]).strip()
+
+        return first('title'), first('artist')
+    except Exception:
+        return '', ''
+
+
 def read_tab(data: bytes, name: str, track: int | None):
     """Parses a tab and picks its bass track. Raises TabError."""
     score = load_score(data, name)
@@ -68,8 +84,9 @@ def start_import(
             else:
                 assert full is not None
                 files = {'full': full.name}
+            tag_artist = file_tags(d / files['full'])[1] if full is not None and not artist else ''
             song = {
-                'id': song_id, 'title': title, 'artist': artist,
+                'id': song_id, 'title': title, 'artist': artist or tag_artist,
                 'durationSec': round(duration_sec(d / files['full']), 3),
                 'hasChart': (d / 'chart.json').is_file(),
                 'stems': ['full'], 'offsetSec': 0.0,
