@@ -1,12 +1,14 @@
 """Drop folder: anything put in ~/BassHopper/inbox is imported into the library on its own.
 
-  song.mp3 (+ song.gp5)     one mixed track, optional tab with the same name; stems via Demucs
+  song.mp3 (+ song.gp5)     one mixed track, optional tab with a similar name; stems via Demucs
+  song.gp5 on its own       attaches to the library song with that name (tab arriving later)
   Some Song/ or Some.zip    a real multitrack: files with "bass" in the name are the bass,
                             the rest is the band. A tab inside is used too.
 
 Imported originals move to inbox/imported/, failures to inbox/failed/ with a .txt reason.
 """
 
+import difflib
 import logging
 import re
 import shutil
@@ -17,7 +19,7 @@ from pathlib import Path
 
 import soundfile as sf
 
-from . import importer
+from . import importer, library
 from .audio import AUDIO_EXT
 from .config import inbox_dir
 from .tabs.load import TAB_EXT
@@ -122,6 +124,47 @@ def _title(name: str) -> str:
     return re.sub(r'\s+(full|multitrack|stems?)$', '', name, flags=re.I).strip()
 
 
+# Words that tab and audio downloads tack onto a song name.
+_NOISE = re.compile(
+    r'\b(bass|tabs?|guitar ?pro|gp\d?|official|audio|video|lyrics?|hq|hd|remaster(ed)?|'
+    r'version|ver|v\d+|feat\.?|ft\.?|explicit|mp3|track|by)\b'
+)
+
+
+def _norm(name: str) -> str:
+    name = re.sub(r'[\(\[\{].*?[\)\]\}]', ' ', name.lower())
+    name = re.sub(r'^\s*\d{1,2}[\s.\-_]+', ' ', name)  # leading track number
+    name = _NOISE.sub(' ', re.sub(r'[_]+', ' ', name))
+    return re.sub(r'[^a-z0-9]+', '', name)
+
+
+def same_song(a: str, b: str) -> bool:
+    """Fuzzy: 'Queen - Another One Bites the Dust (Remastered).mp3' ~ 'another one bites the dust bass.gp5'."""
+    def forms(n: str) -> set[str]:
+        return {_norm(n), _norm(n.split(' - ', 1)[-1])} - {''}
+
+    for x in forms(a):
+        for y in forms(b):
+            if x == y or difflib.SequenceMatcher(None, x, y).ratio() >= 0.85:
+                return True
+    return False
+
+
+class _NoSong(Exception):
+    pass
+
+
+def _attach_lone_tab(tab: Path) -> bool:
+    """Attaches a tab with no audio next to it to the best-named song already in the library."""
+    songs = [s for s in library.list_songs() if same_song(tab.stem, s['title'])]
+    if not songs:
+        return False
+    songs.sort(key=lambda s: (s.get('hasChart', False), -s.get('createdAt', 0)))
+    _, synced = importer.attach_tab(songs[0]['id'], (tab.name, tab.read_bytes()))
+    log.info('Attached %s to %s (auto-synced: %s)', tab.name, songs[0]['title'], synced)
+    return True
+
+
 def scan_once() -> None:
     root = inbox_dir()
     for zp in sorted(root.glob('*.zip')):
@@ -134,23 +177,38 @@ def scan_once() -> None:
     for entry in sorted(root.iterdir()):
         if _stop.is_set():
             return
+        if not entry.exists():
+            continue  # already went in with the audio it belongs to
         if entry.name in _DONE or _SKIP.match(entry.name) or _age(entry) < SETTLE_SEC:
             continue
         ext = entry.suffix.lower()
         if entry.is_dir():
             work, files = (lambda e=entry: _import_folder(e)), [entry]
         elif ext in AUDIO_EXT:
-            tabs = [t for t in root.iterdir() if t.stem == entry.stem and t.suffix.lower() in TAB_EXT]
+            tabs = [t for t in root.iterdir() if t.suffix.lower() in TAB_EXT and same_song(t.stem, entry.stem)]
             if not tabs and _age(entry) < TAB_GRACE_SEC:
                 continue
 
-            def work(e: Path = entry, t: list[Path] = tabs) -> None:
+            def work(e: Path = entry, t: list[Path] = tabs[:1]) -> None:
                 with e.open('rb') as f:
-                    _wait(importer.start_import(audio_name=e.name, audio=f, tab=_tab_of(t), title=_title(e.stem)))
+                    # With a tab, its own title/artist win over a messy file name.
+                    _wait(importer.start_import(audio_name=e.name, audio=f, tab=_tab_of(t), title='' if t else _title(e.stem)))
 
-            files = [entry, *tabs]
+            files = [entry, *tabs[:1]]
+        elif ext in TAB_EXT:
+            if any(a.suffix.lower() in AUDIO_EXT and same_song(a.stem, entry.stem) for a in root.iterdir()):
+                continue  # its audio is here; it goes in with that
+            if entry.name in status and status[entry.name].startswith('waiting'):
+                if not any(same_song(entry.stem, s['title']) for s in library.list_songs()):
+                    continue
+
+            def work(t: Path = entry) -> None:
+                if not _attach_lone_tab(t):
+                    raise _NoSong
+
+            files = [entry]
         else:
-            continue  # tabs wait for their audio; anything else is ignored
+            continue
 
         status[entry.name] = 'importing'
         log.info('Importing %s from the inbox', entry.name)
@@ -158,6 +216,8 @@ def scan_once() -> None:
             work()
             _move(files, 'imported')
             status[entry.name] = 'imported'
+        except _NoSong:
+            status[entry.name] = 'waiting for its song: drop the audio in too'
         except Exception as e:
             log.warning('Inbox import of %s failed: %s', entry.name, e)
             _move(files, 'failed', f'Import failed: {e}')

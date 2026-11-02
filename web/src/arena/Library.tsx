@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { deleteSong, health, listSongs, type Health, type Song } from './api'
+import { attachTab, deleteSong, health, listSongs, type Health, type Song } from './api'
 import { DIFFICULTIES } from './difficulty'
 import { fmtDuration } from './format'
 import { ImportPanel } from './ImportPanel'
@@ -12,6 +12,7 @@ export function Library({ onBack, onOpen }: { onBack: () => void; onOpen: (song:
   const [state, setState] = useState<State>({ name: 'checking' })
   const [confirm, setConfirm] = useState<string | null>(null)
   const [arena, setArena] = useState(loadArena)
+  const [tabMsg, setTabMsg] = useState<{ id: string; text: string } | null>(null)
 
   const refresh = useCallback(async () => {
     const h = await health()
@@ -31,6 +32,31 @@ export function Library({ onBack, onOpen }: { onBack: () => void; onOpen: (song:
   }, [refresh])
 
   const onImported = useCallback(() => void refresh(), [refresh])
+
+  // Songs dropped into ~/BassHopper/inbox show up without a reload.
+  useEffect(() => {
+    if (state.name !== 'ready') return
+    const id = setInterval(() => {
+      listSongs()
+        .then((songs) => setState((st) => (st.name === 'ready' && songs.length !== st.songs.length ? { ...st, songs } : st)))
+        .catch(() => {})
+    }, 5000)
+    return () => clearInterval(id)
+  }, [state.name])
+
+  const addTab = async (song: Song, file: File) => {
+    setTabMsg({ id: song.id, text: 'Reading the tab…' })
+    try {
+      const { synced } = await attachTab(song.id, file)
+      setTabMsg({
+        id: song.id,
+        text: synced ? 'Tab added and lined up with the recording ✓' : 'Tab added. Use the sync buttons while playing to line it up.',
+      })
+      await refresh()
+    } catch (e) {
+      setTabMsg({ id: song.id, text: e instanceof Error ? e.message : String(e) })
+    }
+  }
 
   const remove = async (id: string) => {
     setConfirm(null)
@@ -101,6 +127,19 @@ export function Library({ onBack, onOpen }: { onBack: () => void; onOpen: (song:
                   )}
                   <div className="row">
                     <button className="primary" onClick={() => onOpen(s)}>{s.hasChart ? 'Play' : 'Play along'}</button>
+                    <label className="button ghost" title="Attach a Guitar Pro tab (.gp, .gp5, .gpx…)">
+                      📎 {s.hasChart ? 'Replace tab' : 'Add tab'}
+                      <input
+                        type="file"
+                        accept=".gp,.gpx,.gp5,.gp4,.gp3"
+                        hidden
+                        onChange={(ev) => {
+                          const f = ev.target.files?.[0]
+                          ev.target.value = ''
+                          if (f) void addTab(s, f)
+                        }}
+                      />
+                    </label>
                     {confirm === s.id ? (
                       <>
                         <button className="danger" onClick={() => void remove(s.id)}>Delete for good</button>
@@ -110,9 +149,14 @@ export function Library({ onBack, onOpen }: { onBack: () => void; onOpen: (song:
                       <button className="ghost" onClick={() => setConfirm(s.id)} title="Delete song">🗑</button>
                     )}
                   </div>
+                  {tabMsg?.id === s.id && <p className="muted small">{tabMsg.text}</p>}
                 </div>
               )
             })}
+            <p className="muted small">
+              Tip: drop audio and Guitar Pro tabs into <code>~/BassHopper/inbox</code>. They're paired by name, and a tab
+              dropped later attaches to its song.
+            </p>
           </section>
           <ImportPanel demucs={state.health.demucs} onImported={onImported} />
         </>

@@ -1,5 +1,6 @@
 """Creating songs in the library. Shared by the upload API and the drop folder."""
 
+import json
 import shutil
 import time
 from pathlib import Path
@@ -8,7 +9,7 @@ from typing import BinaryIO
 import numpy as np
 import soundfile as sf
 
-from . import jobs, library
+from . import autosync, jobs, library
 from .audio import duration_sec
 from .stems import SeparationCancelled, demucs_available, separate
 from .tabs import build_chart, load_score, pick_track
@@ -31,6 +32,43 @@ def file_tags(path: Path) -> tuple[str, str]:
         return first('title'), first('artist')
     except Exception:
         return '', ''
+
+
+NO_SYNC = "Couldn't line the tab up with the recording automatically; use the sync buttons while playing."
+
+
+def sync(song: dict, d: Path) -> bool:
+    """Sets song['offsetSec'] by matching the chart to the bass stem. False if it couldn't tell."""
+    bass = song['files'].get('bass')
+    chart_path = d / 'chart.json'
+    if not bass or not chart_path.is_file():
+        return False
+    found = autosync.find_offset(json.loads(chart_path.read_text()), d / bass)
+    if found is None:
+        return False
+    song['offsetSec'], song['syncConfidence'] = found
+    return True
+
+
+def attach_tab(song_id: str, tab: tuple[str, bytes], track: int | None = None) -> tuple[dict, bool]:
+    """Adds (or replaces) the tab of a song already in the library. Returns (song, auto-synced).
+
+    Raises TabError for a bad tab, KeyError for an unknown song.
+    """
+    song = library.load_song(song_id)
+    d = library.song_dir(song_id)
+    if song is None or d is None:
+        raise KeyError(song_id)
+    score, track_index = read_tab(tab[1], tab[0], track)
+    for old in d.glob('source.*'):
+        old.unlink()
+    (d / f'source{Path(tab[0]).suffix.lower()}').write_bytes(tab[1])
+    library.write_json(d / 'chart.json', build_chart(score, track_index, song_id, song['title']))
+    song.update(hasChart=True, trackIndex=track_index, offsetSec=0.0)
+    synced = sync(song, d)
+    library.update_song(song_id, {k: song[k] for k in ('hasChart', 'trackIndex', 'offsetSec')}
+                        | ({'syncConfidence': song['syncConfidence']} if synced else {}))
+    return song, synced
 
 
 def read_tab(data: bytes, name: str, track: int | None):
@@ -101,6 +139,10 @@ def start_import(
                 except Exception as e:
                     job.warning = f'Stem separation failed, only the full mix is available: {e}'
             song['stems'] = [s for s in library.STEM_NAMES if s in files]
+            if song['hasChart']:
+                job.update('Lining the tab up with the recording', 0.96)
+                if not sync(song, d):
+                    job.warning = NO_SYNC
             job.update('Saving', 0.97)
             library.save_song(song)
             return song_id

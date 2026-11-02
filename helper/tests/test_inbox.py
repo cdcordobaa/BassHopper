@@ -6,6 +6,7 @@ import soundfile as sf
 from test_api import GP5
 
 from basshopper_helper import inbox, library, stems
+from basshopper_helper.inbox import same_song
 
 RATE = 22050
 
@@ -34,7 +35,7 @@ def test_single_song_with_matching_tab(box):
     (box / 'My Riff.gp5').write_bytes(GP5)
     inbox.scan_once()
     [song] = library.list_songs()
-    assert song['title'] == 'My Riff' and song['hasChart']
+    assert song['title'] == 'Test Song' and song['hasChart']  # the tab's own title beats the file name
     assert sorted(p.name for p in (box / 'imported').iterdir()) == ['My Riff.gp5', 'My Riff.wav']
 
 
@@ -74,3 +75,42 @@ def test_waits_for_files_still_downloading(box, monkeypatch):
     sf.write(str(box / 'fresh.wav'), tone(55), RATE)
     inbox.scan_once()
     assert library.list_songs() == [] and (box / 'fresh.wav').exists()
+
+
+def test_pairs_tab_and_audio_with_different_names(box):
+    sf.write(str(box / 'Some Band - My Riff (Remastered 2011).wav'), tone(55), RATE)
+    (box / 'my riff bass tab.gp5').write_bytes(GP5)
+    inbox.scan_once()
+    [song] = library.list_songs()
+    assert song['hasChart']
+    assert not any(p.suffix in ('.gp5', '.wav') for p in box.iterdir())
+
+
+def test_tab_arriving_later_attaches_to_the_song(box):
+    sf.write(str(box / 'Lonely Song.wav'), tone(55), RATE)
+    inbox.scan_once()
+    [song] = library.list_songs()
+    assert not song['hasChart']
+    (box / 'Lonely Song (Bass).gp5').write_bytes(GP5)
+    inbox.scan_once()
+    assert library.list_songs()[0]['hasChart']
+    assert (box / 'imported' / 'Lonely Song (Bass).gp5').exists()
+
+
+def test_tab_without_any_song_waits(box):
+    (box / 'Nothing Like This.gp5').write_bytes(GP5)
+    inbox.scan_once()
+    inbox.scan_once()
+    assert (box / 'Nothing Like This.gp5').exists()
+    assert inbox.status['Nothing Like This.gp5'].startswith('waiting')
+
+
+@pytest.mark.parametrize(('a', 'b', 'same'), [
+    ('Queen - Another One Bites the Dust (Remastered 2011)', 'another one bites the dust bass', True),
+    ('01 Come Together', 'The Beatles - Come Together (ver 2)', True),
+    ('Hysteria', 'Muse - Hysteria [Bass Tab]', True),
+    ('Come Together', 'Get Together', False),
+    ('Money', 'Money for Nothing', False),
+])
+def test_same_song(a, b, same):
+    assert same_song(a, b) is same

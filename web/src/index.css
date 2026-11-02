@@ -28,11 +28,14 @@ p { line-height: 1.5; margin: 0.4rem 0; }
 .warn { background: #3a2a05; border: 1px solid var(--warn); padding: 0.6rem 0.9rem; border-radius: 10px; }
 .tip { background: var(--panel2); padding: 0.6rem 0.9rem; border-radius: 10px; }
 
-button {
+button,
+label.button {
   font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line);
   padding: 0.55rem 1rem; border-radius: 10px; cursor: pointer; transition: transform 0.08s, background 0.15s;
 }
-button:hover:not(:disabled) { background: #2c2347; }
+label.button { display: inline-flex; align-items: center; cursor: pointer; }
+button:hover:not(:disabled),
+label.button:hover { background: #2c2347; }
 button:active:not(:disabled) { transform: scale(0.97); }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
 button.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); border: none; font-weight: 700; }

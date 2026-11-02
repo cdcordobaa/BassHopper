@@ -144,6 +144,26 @@ def song_audio(song_id: str, stem: str) -> FileResponse:
     return FileResponse(path, media_type=MEDIA_TYPES.get(path.suffix.lower(), 'application/octet-stream'))
 
 
+@app.post('/api/songs/{song_id}/tab')
+def song_tab(
+    song_id: str,
+    tab: Annotated[UploadFile, File()],
+    track: Annotated[str, Form()] = '',
+) -> dict:
+    _song_or_404(song_id)
+    if Path(tab.filename or '').suffix.lower() not in TAB_EXT:
+        raise HTTPException(415, f'Tab must be one of {", ".join(sorted(TAB_EXT))}')
+    try:
+        wanted = int(track) if track.strip() else None
+    except ValueError as e:
+        raise HTTPException(400, 'track must be an integer') from e
+    try:
+        song, synced = importer.attach_tab(song_id, (tab.filename or 'tab.gp', tab.file.read()), wanted)
+    except TabError as e:
+        raise _tab_error(e) from e
+    return {'song': library.public(song), 'synced': synced}
+
+
 class SongPatch(BaseModel):
     offsetSec: float | None = None
     title: str | None = None

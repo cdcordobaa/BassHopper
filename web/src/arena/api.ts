@@ -111,6 +111,13 @@ export async function startImport(req: ImportRequest): Promise<string> {
   return (await call<{ jobId: string }>('/import', { method: 'POST', body: fd })).jobId
 }
 
+/** Adds or replaces a song's tab; the helper lines it up with the recording when it can. */
+export async function attachTab(songId: string, tab: File): Promise<{ song: Song; synced: boolean }> {
+  const fd = new FormData()
+  fd.append('tab', tab)
+  return call<{ song: Song; synced: boolean }>(`/songs/${encodeURIComponent(songId)}/tab`, { method: 'POST', body: fd })
+}
+
 export function getJob(jobId: string): Promise<Job> {
   return call<Job>(`/jobs/${encodeURIComponent(jobId)}`)
 }
