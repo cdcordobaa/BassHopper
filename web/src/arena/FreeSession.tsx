@@ -5,6 +5,7 @@ import { Fretboard, marksForMidi } from '../ui/Fretboard'
 import { useCurrentNote, useNoteEvents } from '../ui/hooks'
 import type { Song } from './api'
 import type { Mix } from './ArenaSession'
+import { LiveMixer } from './LiveMixer'
 import { SongPlayer } from './player'
 import './arena.css'
 
@@ -17,7 +18,6 @@ export function FreeSession({ song, speed, mix, onQuit }: { song: Song; speed: n
   const [dur, setDur] = useState(song.durationSec)
   const [playing, setPlaying] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [volumes, setVolumes] = useState(mix)
   const [trail, setTrail] = useState<number[]>([])
   const midi = useCurrentNote()
 
@@ -59,12 +59,6 @@ export function FreeSession({ song, speed, mix, onQuit }: { song: Song; speed: n
     setPlaying(p.playing)
   }
 
-  const setVol = (k: 'band' | 'guide', v: number) => {
-    setVolumes((m) => ({ ...m, [k]: v }))
-    if (k === 'band') player.current?.setBand(v)
-    else player.current?.setGuide(v)
-  }
-
   return (
     <div className="screen free">
       <header className="screen-head">
@@ -95,14 +89,7 @@ export function FreeSession({ song, speed, mix, onQuit }: { song: Song; speed: n
           <span className="muted">{Math.round(speed * 100)}%</span>
         </div>
         <div className="arena-controls">
-          <label>
-            Band <input type="range" min={0} max={1} step={0.01} value={volumes.band} onChange={(ev) => setVol('band', Number(ev.target.value))} />
-          </label>
-          {song.stems.includes('bass') && (
-            <label>
-              Guide bass <input type="range" min={0} max={1} step={0.01} value={volumes.guide} onChange={(ev) => setVol('guide', Number(ev.target.value))} />
-            </label>
-          )}
+          <LiveMixer mix={mix} player={player} guideAvailable={song.stems.includes('bass')} />
         </div>
       </section>
       <section className="card">

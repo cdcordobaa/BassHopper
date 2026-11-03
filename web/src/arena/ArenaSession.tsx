@@ -10,6 +10,7 @@ import type { Song, SongChart } from './api'
 import { deriveDifficulty, type Difficulty } from './difficulty'
 import { SongPlayer } from './player'
 import { loopPassOver, tapOffset, type LoopRange } from './sync'
+import { LiveMixer } from './LiveMixer'
 import { OffsetNudge } from './OffsetNudge'
 import './arena.css'
 
@@ -58,7 +59,6 @@ export function ArenaSession({ song, chart, difficulty, speed, loop, mix, onOffs
   const [target, setTarget] = useState<Mark[]>([])
   const [offsetSec, setOffsetSec] = useState(song.offsetSec)
   const [error, setError] = useState<string | null>(null)
-  const [volumes, setVolumes] = useState(mix)
   const playing = useCurrentNote()
   const fbId = useRef(0)
 
@@ -285,12 +285,6 @@ export function ArenaSession({ song, chart, difficulty, speed, loop, mix, onOffs
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const setVol = (k: 'band' | 'guide', v: number) => {
-    setVolumes((m) => ({ ...m, [k]: v }))
-    if (k === 'band') playerRef.current?.setBand(v)
-    else playerRef.current?.setGuide(v)
-  }
-
   const marks: Mark[] = [...target, ...marksForMidi(playing, 'played').slice(0, 2)]
   const guideAvailable = song.stems.includes('bass')
 
@@ -345,13 +339,7 @@ export function ArenaSession({ song, chart, difficulty, speed, loop, mix, onOffs
         </div>
       </div>
       <div className="arena-controls">
-        <label>
-          Band <input type="range" min={0} max={1} step={0.01} value={volumes.band} onChange={(ev) => setVol('band', Number(ev.target.value))} />
-        </label>
-        <label className={guideAvailable ? '' : 'muted'}>
-          Guide bass{' '}
-          <input type="range" min={0} max={1} step={0.01} value={volumes.guide} disabled={!guideAvailable} onChange={(ev) => setVol('guide', Number(ev.target.value))} />
-        </label>
+        <LiveMixer mix={mix} player={playerRef} guideAvailable={guideAvailable} />
         <OffsetNudge offsetSec={offsetSec} onNudge={(d) => ctl.current?.nudge(d)} />
         <div className="row arena-tap">
           <button onClick={() => ctl.current?.tap()} title="Tap on every beat you hear (T)">Tap beat (T)</button>

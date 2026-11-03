@@ -142,18 +142,28 @@ export function SongScreen({ song, chart, chartError, settings, onSettings, onOf
         <h2>Mixer</h2>
         <div className="sliders">
           <label>
-            <span>Band {song.stems.includes('no_bass') ? '(bass removed)' : '(full mix)'}</span>
+            <span>
+              <button className={`mix-toggle ${mix.band > 0 ? 'on' : ''}`} onClick={(ev) => { ev.preventDefault(); onSettings({ mix: { ...mix, band: mix.band > 0 ? 0 : 0.8 } }) }}>
+                {mix.band > 0 ? '🔊' : '🔇'} Music
+              </button>{' '}
+              {song.stems.includes('no_bass') ? '(bass removed)' : '(full mix)'}
+            </span>
             <input type="range" min={0} max={1} step={0.01} value={mix.band} onChange={(ev) => onSettings({ mix: { ...mix, band: Number(ev.target.value) } })} />
           </label>
           <label className={guideAvailable ? '' : 'muted'}>
-            <span>Guide bass {guideAvailable ? '' : '(needs stems)'}</span>
+            <span>
+              <button className={`mix-toggle ${mix.guide > 0 ? 'on' : ''}`} disabled={!guideAvailable} onClick={(ev) => { ev.preventDefault(); onSettings({ mix: { ...mix, guide: mix.guide > 0 ? 0 : 0.6 } }) }}>
+                {mix.guide > 0 ? '🔊' : '🔇'} Guide bass
+              </button>{' '}
+              {guideAvailable ? '' : '(needs stems)'}
+            </span>
             <input type="range" min={0} max={1} step={0.01} disabled={!guideAvailable} value={mix.guide} onChange={(ev) => onSettings({ mix: { ...mix, guide: Number(ev.target.value) } })} />
           </label>
         </div>
         <label className="check">
           <input type="checkbox" checked={mix.duck} disabled={!guideAvailable} onChange={(ev) => onSettings({ mix: { ...mix, duck: ev.target.checked } })} /> Guide bass ducks when you miss
         </label>
-        {e.source?.kind === 'mic' && guideAvailable && <p className="muted small">Guide bass starts muted on a mic — the mic would hear it and score it as you.</p>}
+        {e.source?.kind === 'mic' && guideAvailable && <p className="muted small">Music and guide bass can be switched on and off while playing too (keys M and G). Guide bass starts muted on a mic — the mic would hear it and score it as you.</p>}
         <div className="row">
           <OffsetNudge offsetSec={song.offsetSec} onNudge={(d) => onOffset(Math.round((song.offsetSec + d) * 1000) / 1000)} />
           <span className="muted small">Fine-tune while playing too, or press T on each beat to auto-sync.</span>
