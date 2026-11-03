@@ -164,6 +164,16 @@ def song_tab(
     return {'song': library.public(song), 'synced': synced}
 
 
+@app.post('/api/songs/{song_id}/autotab')
+def song_autotab(song_id: str) -> dict:
+    _song_or_404(song_id)
+    try:
+        job = importer.start_auto_tab(song_id)
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from e
+    return {'jobId': job.id}
+
+
 class SongPatch(BaseModel):
     offsetSec: float | None = None
     title: str | None = None

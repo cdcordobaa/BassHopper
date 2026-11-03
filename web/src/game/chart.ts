@@ -120,6 +120,14 @@ export function timeChart(chart: Chart, startTime: number, bpm: number, countInB
   }))
 }
 
+/**
+ * Changes tempo mid-run: every time after `pivot` moves `factor` times as far from it
+ * (factor 2 = half speed). Times at or before the pivot stay put. Mutates `times`.
+ */
+export function stretchAfter(times: number[], pivot: number, factor: number): void {
+  for (let i = 0; i < times.length; i++) if (times[i] > pivot) times[i] = pivot + (times[i] - pivot) * factor
+}
+
 /** Renders a chart as ASCII tab, G string on top, eighth-note grid. */
 export function chartToTab(chart: Chart, barsPerLine = 2): string[] {
   const perBeat = 2

@@ -27,9 +27,11 @@ uv run pytest                 # tests (BASSHOPPER_TEST_DEMUCS=1 adds a real Demu
 | `POST /api/tab/tracks` (multipart `tab`) | `{tracks:[{index,name,strings,isBass}]}` |
 | `POST /api/import` (multipart `audio`, opt. `tab`, `title`, `artist`, `track`) | `{jobId}` — tab is parsed synchronously, so bad tabs fail here with 400/415 |
 | `GET /api/jobs/{id}` | `{state, step, progress, songId?, error?, warning?}` (`warning` = stems failed, full mix still imported) |
-| `GET /api/songs` | `{songs:[{id,title,artist,durationSec,hasChart,stems,offsetSec}]}` |
+| `GET /api/songs` | `{songs:[{id,title,artist,durationSec,hasChart,stems,offsetSec,autoTab}]}` |
 | `GET /api/songs/{id}/chart` | SongChart, 404 without a tab |
 | `GET /api/songs/{id}/audio/{stem}` | `full` (original upload) always; `bass drums vocals other no_bass` (FLAC) after separation. Range requests supported |
+| `POST /api/songs/{id}/tab` (multipart `tab`, opt. `track`) | `{song, synced}`, adds or replaces the tab and auto-syncs it |
+| `POST /api/songs/{id}/autotab` | `{jobId}`, writes an approximate chart from the bass stem (409 without stems or over a real tab) |
 | `PATCH /api/songs/{id}` | `{offsetSec?, title?, artist?}` → song |
 | `DELETE /api/songs/{id}` | `{ok:true}` |
 

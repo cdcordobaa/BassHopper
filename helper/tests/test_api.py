@@ -73,7 +73,7 @@ def test_import_list_chart_audio_patch_delete(client):
     songs = client.get('/api/songs').json()['songs']
     assert songs == [{
         'id': song_id, 'title': 'My Riff', 'artist': 'Me', 'durationSec': 1.5,
-        'hasChart': True, 'stems': ['full'], 'offsetSec': 0.0,
+        'hasChart': True, 'stems': ['full'], 'offsetSec': 0.0, 'autoTab': False,
     }]
 
     chart = client.get(f'/api/songs/{song_id}/chart').json()

@@ -25,6 +25,8 @@ export interface Song {
   hasChart: boolean
   stems: string[]
   offsetSec: number
+  /** The chart was transcribed from the bass stem, not a real tab: approximate. */
+  autoTab?: boolean
 }
 
 export interface Job {
@@ -116,6 +118,11 @@ export async function attachTab(songId: string, tab: File): Promise<{ song: Song
   const fd = new FormData()
   fd.append('tab', tab)
   return call<{ song: Song; synced: boolean }>(`/songs/${encodeURIComponent(songId)}/tab`, { method: 'POST', body: fd })
+}
+
+/** Starts transcribing the song's bass stem into an approximate tab. Resolves the job id. */
+export async function startAutoTab(songId: string): Promise<string> {
+  return (await call<{ jobId: string }>(`/songs/${encodeURIComponent(songId)}/autotab`, { method: 'POST' })).jobId
 }
 
 export function getJob(jobId: string): Promise<Job> {

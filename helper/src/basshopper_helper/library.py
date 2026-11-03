@@ -41,7 +41,7 @@ def load_song(song_id: str) -> dict | None:
 
 
 def public(song: dict) -> dict:
-    return {k: song[k] for k in PUBLIC_FIELDS}
+    return {k: song[k] for k in PUBLIC_FIELDS} | {'autoTab': bool(song.get('autoTab'))}
 
 
 def list_songs() -> list[dict]:

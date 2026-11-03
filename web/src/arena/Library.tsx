@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { attachTab, deleteSong, health, listSongs, type Health, type Song } from './api'
+import { attachTab, deleteSong, getJob, health, jobLost, listSongs, startAutoTab, hasGuide, type Health, type Job, type Song } from './api'
 import { DIFFICULTIES } from './difficulty'
 import { fmtDuration } from './format'
 import { ImportPanel } from './ImportPanel'
@@ -52,6 +52,31 @@ export function Library({ onBack, onOpen }: { onBack: () => void; onOpen: (song:
         id: song.id,
         text: synced ? 'Tab added and lined up with the recording ✓' : 'Tab added. Use the sync buttons while playing to line it up.',
       })
+      await refresh()
+    } catch (e) {
+      setTabMsg({ id: song.id, text: e instanceof Error ? e.message : String(e) })
+    }
+  }
+
+  const makeTab = async (song: Song) => {
+    setTabMsg({ id: song.id, text: 'Listening to the bass line…' })
+    try {
+      const jobId = await startAutoTab(song.id)
+      for (let failures = 0; ; ) {
+        await new Promise((r) => setTimeout(r, 700))
+        let j: Job
+        try {
+          j = await getJob(jobId)
+          failures = 0
+        } catch (e) {
+          if (jobLost(e, ++failures)) throw e
+          continue
+        }
+        if (j.state === 'error') throw new Error(j.error ?? 'Making the tab failed')
+        if (j.state === 'done') break
+        setTabMsg({ id: song.id, text: `${j.step} · ${Math.round(j.progress * 100)}%` })
+      }
+      setTabMsg({ id: song.id, text: 'Tab made from the recording ✓ It is a rough guess: trust your ears over the gems.' })
       await refresh()
     } catch (e) {
       setTabMsg({ id: song.id, text: e instanceof Error ? e.message : String(e) })
@@ -111,7 +136,7 @@ export function Library({ onBack, onOpen }: { onBack: () => void; onOpen: (song:
                       {s.artist || 'Unknown artist'} · {fmtDuration(s.durationSec)}
                     </span>
                     <span className="arena-badges">
-                      <span className={s.hasChart ? 'badge on' : 'badge'}>{s.hasChart ? 'tab' : 'no tab'}</span>
+                      <span className={s.hasChart ? 'badge on' : 'badge'}>{s.hasChart ? (s.autoTab ? 'auto tab (approximate)' : 'tab') : 'no tab'}</span>
                       {s.stems.includes('no_bass') && <span className="badge on">bass muted</span>}
                     </span>
                   </button>
@@ -140,6 +165,11 @@ export function Library({ onBack, onOpen }: { onBack: () => void; onOpen: (song:
                         }}
                       />
                     </label>
+                    {(!s.hasChart || s.autoTab) && hasGuide(s) && (
+                      <button className="ghost" onClick={() => void makeTab(s)} title="Write a tab by listening to the song's bass track">
+                        ✨ {s.autoTab ? 'Remake tab' : 'Make a tab'}
+                      </button>
+                    )}
                     {confirm === s.id ? (
                       <>
                         <button className="danger" onClick={() => void remove(s.id)}>Delete for good</button>

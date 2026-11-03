@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { DRUM_STYLES, playChordStab, playDrumStep, type Backing, type DrumStyle } from '../audio/band'
 import { engine } from '../audio/engine'
-import { chartToTab, timeChart } from '../game/chart'
+import { chartToTab, stretchAfter, timeChart } from '../game/chart'
 import { nextLevel, type Level } from '../game/path/worlds'
 import { getProgress, recordRun } from '../game/progress'
 import { NORMAL_WINDOWS, ROOKIE_WINDOWS, Scorer, type Grade, type ScoreSummary } from '../game/scorer'
@@ -12,7 +12,7 @@ import { Fretboard, marksForMidi, type Mark } from './Fretboard'
 import { Highway, type HighwayState } from './Highway'
 import { useCurrentNote, useEngine } from './hooks'
 
-const SPEEDS = [0.5, 0.75, 0.9, 1]
+const SPEEDS = [0.5, 0.6, 0.75, 0.9, 1, 1.1]
 const BACKINGS: { id: Backing; label: string }[] = [
   { id: 'click', label: '⏱ Click' },
   { id: 'drums', label: '🥁 Drums' },
@@ -29,45 +29,88 @@ interface Props {
 type Phase =
   | { name: 'intro' }
   | { name: 'playing'; run: number }
-  | { name: 'done'; summary: ScoreSummary; xp: number; avgDelta: number | null; latencyAdjustMs: number }
+  | { name: 'done'; summary: ScoreSummary; xp: number; avgDelta: number | null }
+
+/** Everything that can be changed before a run, between runs and while playing. */
+export interface PlaySettings {
+  speed: number
+  rookie: boolean
+  wait: boolean
+  backing: Backing
+  style: DrumStyle
+}
+
+const flag = (key: string, fallback: boolean) => {
+  const v = localStorage.getItem(key)
+  return v === null ? fallback : v === '1'
+}
+
+function SettingsPanel({ s, set, bpm, compact = false }: { s: PlaySettings; set: (p: Partial<PlaySettings>) => void; bpm: number; compact?: boolean }) {
+  return (
+    <div className={compact ? 'live-controls' : 'settings-panel'}>
+      <div className="row">
+        <div className="seg">
+          {SPEEDS.map((sp) => (
+            <button key={sp} className={sp === s.speed ? 'on' : ''} onClick={() => set({ speed: sp })}>
+              {Math.round(sp * 100)}%
+            </button>
+          ))}
+        </div>
+        <span className="muted">{Math.round(bpm * s.speed)} BPM</span>
+        <label className="check">
+          <input type="checkbox" checked={s.wait} onChange={(ev) => set({ wait: ev.target.checked })} /> 🐢 Wait for me
+          {!compact && ' (highway stops until you play the note)'}
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={s.rookie} onChange={(ev) => set({ rookie: ev.target.checked })} /> Rookie timing
+          {!compact && ' (wider windows)'}
+        </label>
+      </div>
+      <div className="row">
+        <div className="seg">
+          {BACKINGS.map((b) => (
+            <button key={b.id} className={b.id === s.backing ? 'on' : ''} onClick={() => set({ backing: b.id })}>
+              {b.label}
+            </button>
+          ))}
+        </div>
+        {s.backing !== 'click' && (
+          <div className="seg">
+            {DRUM_STYLES.map((d) => (
+              <button key={d.id} className={d.id === s.style ? 'on' : ''} onClick={() => set({ style: d.id })}>
+                {d.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 
 export function Play({ level, onExit, onSetup, onLevel }: Props) {
   const e = useEngine()
-  const [speed, setSpeed] = useState(1)
-  const [rookie, setRookie] = useState(true)
-  const [wait, setWait] = useState(true)
-  const [backing, setBackingState] = useState<Backing>(() => (localStorage.getItem('bh.backing') as Backing | null) ?? 'drums')
-  const [style, setStyle] = useState<DrumStyle>(level.style ?? 'rock')
-  const setBacking = (b: Backing) => {
-    localStorage.setItem('bh.backing', b)
-    setBackingState(b)
+  const [settings, setSettings] = useState<PlaySettings>(() => ({
+    speed: 1,
+    rookie: flag('bh.rookie', true),
+    wait: flag('bh.wait', true),
+    backing: (localStorage.getItem('bh.backing') as Backing | null) ?? 'drums',
+    style: level.style ?? 'rock',
+  }))
+  const set = (patch: Partial<PlaySettings>) => {
+    if (patch.backing) localStorage.setItem('bh.backing', patch.backing)
+    if (patch.wait !== undefined) localStorage.setItem('bh.wait', patch.wait ? '1' : '0')
+    if (patch.rookie !== undefined) localStorage.setItem('bh.rookie', patch.rookie ? '1' : '0')
+    setSettings((s) => ({ ...s, ...patch }))
   }
   const [phase, setPhase] = useState<Phase>({ name: 'intro' })
   const runs = useRef(0)
 
   useEffect(() => {
     setPhase({ name: 'intro' })
-    setStyle(level.style ?? 'rock')
+    setSettings((s) => ({ ...s, style: level.style ?? 'rock' }))
   }, [level.id, level.style])
-
-  if (phase.name === 'playing') {
-    return (
-      <Session
-        key={phase.run}
-        level={level}
-        speed={speed}
-        rookie={rookie}
-        wait={wait}
-        backing={backing}
-        style={style}
-        onQuit={() => setPhase({ name: 'intro' })}
-        onDone={(summary, avgDelta, latencyAdjustMs) => {
-          const xp = recordRun(level.id, summary)
-          setPhase({ name: 'done', summary, xp, avgDelta, latencyAdjustMs })
-        }}
-      />
-    )
-  }
 
   const start = async () => {
     await engine.context()
@@ -75,8 +118,25 @@ export function Play({ level, onExit, onSetup, onLevel }: Props) {
     setPhase({ name: 'playing', run: runs.current })
   }
 
+  if (phase.name === 'playing') {
+    return (
+      <Session
+        key={phase.run}
+        level={level}
+        settings={settings}
+        set={set}
+        onQuit={() => setPhase({ name: 'intro' })}
+        onRestart={start}
+        onDone={(summary, avgDelta) => {
+          const xp = recordRun(level.id, summary)
+          setPhase({ name: 'done', summary, xp, avgDelta })
+        }}
+      />
+    )
+  }
+
   if (phase.name === 'done') {
-    const { summary: s, xp, avgDelta, latencyAdjustMs } = phase
+    const { summary: s, xp, avgDelta } = phase
     const next = nextLevel(level.id)
     const tendency =
       avgDelta === null || Math.abs(avgDelta) < 0.015
@@ -96,10 +156,11 @@ export function Play({ level, onExit, onSetup, onLevel }: Props) {
           <span className="g-perfect">{s.perfect} perfect</span> · <span className="g-good">{s.good} good</span> · <span className="g-miss">{s.miss} miss</span>
         </p>
         <p>{tendency}</p>
-        {Math.abs(latencyAdjustMs) >= 15 && (
-          <p className="muted">🎯 Latency auto-adjusted by {latencyAdjustMs > 0 ? '+' : ''}{latencyAdjustMs} ms — timing will feel fairer next time.</p>
-        )}
         {s.stars < 2 && <p className="muted">Next level unlocked anyway. Come back for 2★+ when you feel ready — repetition is how it sticks.</p>}
+        <section className="card">
+          <h2>Play again with…</h2>
+          <SettingsPanel s={settings} set={set} bpm={level.chart.bpm} />
+        </section>
         <div className="row center">
           <button className="primary" onClick={start}>↻ Retry</button>
           {next && <button className="primary" onClick={() => onLevel(next.id)}>Next: {next.title} →</button>}
@@ -131,43 +192,11 @@ export function Play({ level, onExit, onSetup, onLevel }: Props) {
         <pre className="tab">{chartToTab(level.chart).join('\n')}</pre>
         <p className="muted">Key: <b>{keyName(detectKey(chartKeyNotes(level.chart), level.chart.beatsPerBar))}</b> — the band plays chords from this key.</p>
       </section>
-      <section className="card row">
-        <div className="seg">
-          {SPEEDS.map((sp) => (
-            <button key={sp} className={sp === speed ? 'on' : ''} onClick={() => setSpeed(sp)}>
-              {Math.round(sp * 100)}%
-            </button>
-          ))}
-        </div>
-        <label className="check">
-          <input type="checkbox" checked={wait} onChange={(ev) => setWait(ev.target.checked)} /> 🐢 Wait for me (highway stops until you play the note)
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={rookie} onChange={(ev) => setRookie(ev.target.checked)} /> Rookie timing (wider windows)
-        </label>
-        <span className="muted">{Math.round(level.chart.bpm * speed)} BPM</span>
-      </section>
       <section className="card">
-        <h2>Backing band</h2>
-        <div className="row">
-          <div className="seg">
-            {BACKINGS.map((b) => (
-              <button key={b.id} className={b.id === backing ? 'on' : ''} onClick={() => setBacking(b.id)}>
-                {b.label}
-              </button>
-            ))}
-          </div>
-          {backing !== 'click' && (
-            <div className="seg">
-              {DRUM_STYLES.map((d) => (
-                <button key={d.id} className={d.id === style ? 'on' : ''} onClick={() => setStyle(d.id)}>
-                  {d.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        {backing !== 'click' && e.source?.kind === 'mic' && (
+        <h2>Settings</h2>
+        <p className="muted">You can change all of these while playing too.</p>
+        <SettingsPanel s={settings} set={set} bpm={level.chart.bpm} />
+        {settings.backing !== 'click' && e.source?.kind === 'mic' && (
           <p className="muted">🎧 Headphones recommended. Otherwise keep the band quieter than your amp so the mic hears your bass, not the drums.</p>
         )}
       </section>
@@ -185,18 +214,16 @@ export function Play({ level, onExit, onSetup, onLevel }: Props) {
 
 interface SessionProps {
   level: Level
-  speed: number
-  rookie: boolean
-  wait: boolean
-  backing: Backing
-  style: DrumStyle
-  onDone: (s: ScoreSummary, avgDelta: number | null, latencyAdjustMs: number) => void
+  settings: PlaySettings
+  set: (p: Partial<PlaySettings>) => void
+  onDone: (s: ScoreSummary, avgDelta: number | null) => void
   onQuit: () => void
+  onRestart: () => void
 }
 
 type Feedback = { text: string; cls: string; id: number }
 
-function Session({ level, speed, rookie, wait, backing, style, onDone, onQuit }: SessionProps) {
+function Session({ level, settings, set, onDone, onQuit, onRestart }: SessionProps) {
   const chart = level.chart
   const hw = useRef<HighwayState>(null!)
   const scorer = useRef<Scorer>(null!)
@@ -205,49 +232,47 @@ function Session({ level, speed, rookie, wait, backing, style, onDone, onQuit }:
   const [target, setTarget] = useState<Mark[]>([])
   const playing = useCurrentNote()
   const fbId = useRef(0)
+  // The run loop reads the latest settings every frame, so they can change mid-run.
+  const live = useRef(settings)
+  useEffect(() => {
+    live.current = settings
+  }, [settings])
 
   useEffect(() => {
     const ctx = engine.ctx!
-    const bpm = chart.bpm * speed
-    const spb = 60 / bpm
+    let speed = live.current.speed
+    const spb = () => 60 / (chart.bpm * speed)
     const countIn = chart.beatsPerBar
     const t0 = ctx.currentTime + 0.6
     const totalBeats = countIn + Math.ceil(chart.lengthBeats)
     // Note times live on a "game clock". In wait mode the game clock stops at an unplayed note;
     // `paused` is how far it lags the audio clock. In timed mode paused stays 0.
-    const timed = timeChart(chart, t0, bpm, countIn)
-    const sc = new Scorer(timed, rookie ? ROOKIE_WINDOWS : NORMAL_WINDOWS)
+    // A tempo change mid-run stretches every time still ahead (notes, beats, band steps).
+    const timed = timeChart(chart, t0, chart.bpm * speed, countIn)
+    const windowsFor = (rookie: boolean) => (rookie ? ROOKIE_WINDOWS : NORMAL_WINDOWS)
+    const sc = new Scorer(timed, windowsFor(live.current.rookie))
     scorer.current = sc
     const outLat = engine.outputLatency()
-    const baseLatency = (engine.profile?.latencyMs ?? 0) / 1000
+    const latency = (engine.profile?.latencyMs ?? 0) / 1000
     let paused = 0
     let frozenAudio: number | null = null
     let frozenGame = 0
     const gameNow = () => (frozenAudio !== null ? frozenGame : engine.now() - paused)
-
-    // Latency learning: raw offsets (before correction) of correct notes from their targets;
-    // the correction is their recent median, so it can't feed back on itself.
-    const offsets: number[] = []
-    let adapt = 0
-    const learn = (d: number) => {
-      offsets.push(d)
-      const recent = offsets.slice(-8).sort((a, b) => a - b)
-      if (recent.length >= 3) adapt = Math.max(-0.3, Math.min(0.3, recent[Math.floor(recent.length / 2)]))
-    }
     const deltas: number[] = []
 
     const bus = ctx.createGain()
     bus.connect(ctx.destination)
-    const beatTimes = Array.from({ length: totalBeats }, (_, i) => t0 + i * spb)
+    const beatTimes = Array.from({ length: totalBeats }, (_, i) => t0 + i * spb())
 
     // Band: 16th-note steps on the game clock. Count-in is always sticks/clicks.
-    const stepDur = spb / 4
     const totalSteps = totalBeats * 4
+    const stepTimes = Array.from({ length: totalSteps }, (_, i) => t0 + (i * spb()) / 4)
     const bars = Math.ceil(chart.lengthBeats / chart.beatsPerBar)
     const keyNotes = chartKeyNotes(chart)
     const barRoots = barChordRoots(keyNotes, detectKey(keyNotes, chart.beatsPerBar), chart.beatsPerBar, bars)
     const playStep = (step: number, at: number) => {
       const countSteps = countIn * 4
+      const { backing, style } = live.current
       if (step < countSteps || backing === 'click') {
         if (step % 4 === 0) engine.click(at, (step / 4) % chart.beatsPerBar === 0, bus)
         return
@@ -256,7 +281,7 @@ function Session({ level, speed, rookie, wait, backing, style, onDone, onQuit }:
       playDrumStep(ctx, style, songStep % 16, at, bus)
       if (backing === 'band' && songStep % 4 === 0) {
         const root = barRoots[Math.floor(songStep / 4 / chart.beatsPerBar)]
-        if (root !== null && root !== undefined) playChordStab(ctx, root, at, spb * 0.85, bus)
+        if (root !== null && root !== undefined) playChordStab(ctx, root, at, spb() * 0.85, bus)
       }
     }
     let nextStep = 0
@@ -287,7 +312,7 @@ function Session({ level, speed, rookie, wait, backing, style, onDone, onQuit }:
         if (!next) return
         if (sameNoteForgiving(ev.midi, next.midi)) {
           // Played within the normal window after the freeze still counts by timing.
-          const late = ev.time - baseLatency - frozenAudio
+          const late = ev.time - latency - frozenAudio
           const grade: Grade = late <= sc.windows.perfect ? 'perfect' : 'good'
           sc.hit(next.idx, grade)
           onGrade(next.idx, grade, late <= sc.windows.good ? late : undefined)
@@ -296,53 +321,69 @@ function Session({ level, speed, rookie, wait, backing, style, onDone, onQuit }:
         } else say(`You played ${midiToName(ev.midi, false)}, needed ${midiToName(next.midi, false)}`, 'g-wrong')
         return
       }
-      const t = ev.time - baseLatency - paused
-      const d = sc.nearestSamePitchDelta(ev.midi, t, 0.4)
-      const r = sc.onNote(ev.midi, t - adapt)
-      if (d !== null) learn(d)
+      const r = sc.onNote(ev.midi, ev.time - latency - paused)
       if (!r) return
       if (r.kind === 'wrong') say(`You played ${r.played}, needed ${r.needed}`, 'g-wrong')
       else onGrade(r.idx, r.grade, r.delta)
     })
 
+    const noteTimes = () => timed.map((n) => n.time)
+    const changeSpeed = (to: number, pivot: number) => {
+      const factor = speed / to
+      speed = to
+      const nt = noteTimes()
+      stretchAfter(nt, pivot, factor)
+      timed.forEach((n, i) => (n.time = nt[i]))
+      stretchAfter(beatTimes, pivot, factor)
+      hw.current.beatTimes = beatTimes.slice(countIn)
+      stretchAfter(stepTimes, pivot, factor)
+    }
+
     let raf = 0
     let lastTarget = -1
+    let beatIdx = -1
     let finished = false
     const loop = () => {
       raf = requestAnimationFrame(loop)
+      const cfg = live.current
+      if (cfg.speed !== speed) changeSpeed(cfg.speed, gameNow())
+      sc.windows = windowsFor(cfg.rookie)
+      if (!cfg.wait && frozenAudio !== null) {
+        // Wait mode switched off while held: let the clock run again.
+        paused += engine.now() - frozenAudio
+        frozenAudio = null
+      }
       const g = gameNow()
       const next = sc.nextUnjudged()
-      if (wait) {
+      if (cfg.wait) {
         // Hold the highway when the next note reaches the line unplayed.
         // Freeze with the gem sitting exactly on the hit line (past it, perspective hides it).
-        if (frozenAudio === null && next && g - adapt >= next.time) {
-          frozenGame = next.time + adapt
+        if (frozenAudio === null && next && g >= next.time) {
+          frozenGame = next.time
           frozenAudio = engine.now()
           say('Waiting for you…', 'g-wait')
         }
       } else {
-        for (const j of sc.tick(g - adapt)) onGrade(j.idx, j.grade)
+        for (const j of sc.tick(g)) onGrade(j.idx, j.grade)
       }
       // The band follows the game clock, so it pauses and resumes with you.
-      while (frozenAudio === null && nextStep < totalSteps && t0 + nextStep * stepDur < g + 0.1) {
-        const st = t0 + nextStep * stepDur
+      while (frozenAudio === null && nextStep < totalSteps && stepTimes[nextStep] < g + 0.1) {
+        const st = stepTimes[nextStep]
         if (st >= g - 0.02) playStep(nextStep, st + paused)
         nextStep++
       }
-      const beat = Math.floor((g - outLat - t0) / spb)
+      while (beatIdx + 1 < beatTimes.length && beatTimes[beatIdx + 1] <= g - outLat) beatIdx++
+      const beat = beatIdx < 0 ? -99 : beatIdx - countIn
       setHud({ score: sc.score, combo: sc.combo, mult: sc.multiplier(), beat, waiting: frozenAudio !== null })
       const nextIdx = next ? next.idx : -1
       if (nextIdx !== lastTarget) {
         lastTarget = nextIdx
         setTarget(next ? [{ string: next.string, fret: next.fret, kind: 'target', label: String(next.fret) }] : [])
       }
-      if (!finished && !next && g > beatTimes[beatTimes.length - 1] + spb + 0.8) {
+      if (!finished && !next && g > beatTimes[beatTimes.length - 1] + spb() + 0.8) {
         finished = true
         cancelAnimationFrame(raf)
-        if (offsets.length >= 6 && Math.abs(adapt) >= 0.015) {
-          engine.updateProfile({ latencyMs: Math.round((baseLatency + adapt) * 1000) })
-        }
-        onDone(sc.summary(), deltas.length ? deltas.reduce((a, b) => a + b, 0) / deltas.length : null, Math.round(adapt * 1000))
+        onDone(sc.summary(), deltas.length ? deltas.reduce((a, b) => a + b, 0) / deltas.length : null)
       }
     }
     raf = requestAnimationFrame(loop)
@@ -363,13 +404,15 @@ function Session({ level, speed, rookie, wait, backing, style, onDone, onQuit }:
   return (
     <div className="screen play">
       <div className="hud">
-        <button className="ghost" onClick={onQuit}>✕</button>
+        <button className="ghost" onClick={onQuit} title="Back to the level screen">✕</button>
+        <button className="ghost" onClick={onRestart} title="Start this level again from the top">↻ Restart</button>
         <div className="hud-title">{level.title}</div>
         <div className="hud-score">{hud.score.toLocaleString()}</div>
         <div className={`hud-combo ${hud.mult > 1 ? 'hot' : ''}`}>
           {hud.combo} combo {hud.mult > 1 && <b>×{hud.mult}</b>}
         </div>
       </div>
+      <SettingsPanel s={settings} set={set} bpm={chart.bpm} compact />
       <div className="stage">
         <Highway state={hw} />
         {counting && <div className="countin">{hud.beat + countIn + 1}</div>}

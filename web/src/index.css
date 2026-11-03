@@ -176,3 +176,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .wait-banner { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); background: rgba(23,19,37,0.92); border: 1px solid var(--accent); padding: 0.6rem 1.2rem; border-radius: 12px; font-size: 1.2rem; white-space: nowrap; animation: pulse 0.9s infinite alternate; }
 .wait-banner b { color: var(--accent2); }
 .g-wait { color: var(--muted); font-size: 1.2rem; }
+.settings-panel { display: flex; flex-direction: column; gap: 0.6rem; }
+.live-controls { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; align-items: center; font-size: 0.85rem; margin: 0.3rem 0; }
+.live-controls .row { gap: 0.6rem; }
+.live-controls .seg button { padding: 0.25rem 0.55rem; }

@@ -8,14 +8,6 @@ export function isUnlocked(id: string, p: Progress): boolean {
   return (p.levels[ALL_LEVELS[i - 1].id]?.plays ?? 0) >= 1
 }
 
-const UPCOMING = [
-  { n: 4, title: 'Roots', teaches: 'Root notes over chord changes' },
-  { n: 5, title: 'Shapes', teaches: 'Octaves, fifths, the power shape' },
-  { n: 6, title: 'Scales', teaches: 'Pentatonic and blues' },
-  { n: 7, title: 'Groove', teaches: 'Syncopation, dead notes, feel' },
-  { n: 8, title: 'Read It', teaches: 'Sight-reading tab and notation' },
-]
-
 export function PathMap({ onBack, onLevel }: { onBack: () => void; onLevel: (id: string) => void }) {
   const p = useProgress()
   return (
@@ -51,16 +43,8 @@ export function PathMap({ onBack, onLevel }: { onBack: () => void; onLevel: (id:
         )
       })}
       <section className="world upcoming">
-        <h2>Coming next</h2>
-        <div className="levels">
-          {UPCOMING.map((u) => (
-            <div key={u.n} className="level-node locked">
-              <span className="lv-id">W{u.n}</span>
-              <span className="lv-title">{u.title}</span>
-              <span className="muted small">{u.teaches}</span>
-            </div>
-          ))}
-        </div>
+        <h2>After the Path</h2>
+        <p className="muted">Finished World {WORLDS.length}? Take it to <b>Riff Arena</b> and play real songs, or make up your own lines in the <b>Jam Room</b>.</p>
       </section>
     </div>
   )

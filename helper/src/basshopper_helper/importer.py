@@ -9,7 +9,7 @@ from typing import BinaryIO
 import numpy as np
 import soundfile as sf
 
-from . import autosync, jobs, library
+from . import autosync, jobs, library, transcribe
 from .audio import duration_sec
 from .stems import SeparationCancelled, demucs_available, separate
 from .tabs import build_chart, load_score, pick_track
@@ -64,11 +64,41 @@ def attach_tab(song_id: str, tab: tuple[str, bytes], track: int | None = None) -
         old.unlink()
     (d / f'source{Path(tab[0]).suffix.lower()}').write_bytes(tab[1])
     library.write_json(d / 'chart.json', build_chart(score, track_index, song_id, song['title']))
-    song.update(hasChart=True, trackIndex=track_index, offsetSec=0.0)
+    song.update(hasChart=True, trackIndex=track_index, offsetSec=0.0, autoTab=False)
     synced = sync(song, d)
-    library.update_song(song_id, {k: song[k] for k in ('hasChart', 'trackIndex', 'offsetSec')}
+    library.update_song(song_id, {k: song[k] for k in ('hasChart', 'trackIndex', 'offsetSec', 'autoTab')}
                         | ({'syncConfidence': song['syncConfidence']} if synced else {}))
     return song, synced
+
+
+def start_auto_tab(song_id: str) -> jobs.Job:
+    """Queues writing an approximate chart from the song's bass stem (for songs with no real tab).
+
+    Raises KeyError for an unknown song, ValueError when it can't be done.
+    """
+    song = library.load_song(song_id)
+    d = library.song_dir(song_id)
+    if song is None or d is None:
+        raise KeyError(song_id)
+    if song.get('hasChart') and not song.get('autoTab'):
+        raise ValueError('This song already has a real tab')
+    bass = song['files'].get('bass')
+    if not bass:
+        raise ValueError('Making a tab needs the separated bass track; this song has no stems')
+    drums = song['files'].get('drums')
+
+    def work(job: jobs.Job) -> str:
+        job.update('Listening to the bass line', 0.05)
+        chart, offset = transcribe.transcribe(
+            d / bass, d / drums if drums else None, progress=lambda p: job.update(progress=0.05 + 0.9 * p),
+        )
+        chart['id'], chart['title'] = song_id, song['title']
+        job.update('Saving', 0.97)
+        library.write_json(d / 'chart.json', chart)
+        library.update_song(song_id, {'hasChart': True, 'autoTab': True, 'trackIndex': None, 'offsetSec': offset})
+        return song_id
+
+    return jobs.submit(work)
 
 
 def read_tab(data: bytes, name: str, track: int | None):

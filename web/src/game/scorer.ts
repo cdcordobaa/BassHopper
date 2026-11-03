@@ -51,7 +51,8 @@ export class Scorer {
   combo = 0
   maxCombo = 0
   score = 0
-  readonly windows: Windows
+  /** Mutable so timing windows can change mid-run (Rookie toggle). */
+  windows: Windows
 
   constructor(notes: TimedNote[], windows: Windows = NORMAL_WINDOWS) {
     this.notes = notes
