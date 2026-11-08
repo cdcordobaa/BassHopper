@@ -34,6 +34,18 @@ def file_tags(path: Path) -> tuple[str, str]:
         return '', ''
 
 
+def file_bpm(path: Path) -> float | None:
+    """The tempo tag of an audio file, if it has a sensible one."""
+    try:
+        import mutagen
+
+        f = mutagen.File(str(path), easy=True)
+        bpm = float(str(((f.tags or {}) if f is not None else {}).get('bpm', [''])[0]).strip())
+        return bpm if 30 <= bpm <= 300 else None
+    except Exception:
+        return None
+
+
 NO_SYNC = "Couldn't line the tab up with the recording automatically; use the sync buttons while playing."
 
 
@@ -71,8 +83,10 @@ def attach_tab(song_id: str, tab: tuple[str, bytes], track: int | None = None) -
     return song, synced
 
 
-def start_auto_tab(song_id: str) -> jobs.Job:
+def start_auto_tab(song_id: str, bpm_hint: float | None = None) -> jobs.Job:
     """Queues writing an approximate chart from the song's bass stem (for songs with no real tab).
+
+    The tempo search leans toward `bpm_hint`, or else the audio file's own tempo tag when it has one.
 
     Raises KeyError for an unknown song, ValueError when it can't be done.
     """
@@ -86,11 +100,12 @@ def start_auto_tab(song_id: str) -> jobs.Job:
     if not bass:
         raise ValueError('Making a tab needs the separated bass track; this song has no stems')
     drums = song['files'].get('drums')
+    hint = bpm_hint or file_bpm(d / song['files']['full'])
 
     def work(job: jobs.Job) -> str:
         job.update('Listening to the bass line', 0.05)
         chart, offset = transcribe.transcribe(
-            d / bass, d / drums if drums else None, progress=lambda p: job.update(progress=0.05 + 0.9 * p),
+            d / bass, d / drums if drums else None, bpm_hint=hint, progress=lambda p: job.update(progress=0.05 + 0.9 * p),
         )
         chart['id'], chart['title'] = song_id, song['title']
         job.update('Saving', 0.97)

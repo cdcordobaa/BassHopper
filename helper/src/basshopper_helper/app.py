@@ -165,10 +165,13 @@ def song_tab(
 
 
 @app.post('/api/songs/{song_id}/autotab')
-def song_autotab(song_id: str) -> dict:
+def song_autotab(song_id: str, bpm: float | None = None) -> dict:
+    """`bpm` (query) is an optional tempo hint, for when the automatic tempo comes out wrong."""
     _song_or_404(song_id)
+    if bpm is not None and not 30 <= bpm <= 300:
+        raise HTTPException(422, 'bpm must be between 30 and 300')
     try:
-        job = importer.start_auto_tab(song_id)
+        job = importer.start_auto_tab(song_id, bpm)
     except ValueError as e:
         raise HTTPException(409, str(e)) from e
     return {'jobId': job.id}

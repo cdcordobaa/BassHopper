@@ -98,9 +98,11 @@ def test_autotab_api(tmp_path, monkeypatch):
     render(library.song_dir(song_id) / 'bass.flac', 110, 0.5)
     song = library.load_song(song_id)
     library.update_song(song_id, {'files': {**song['files'], 'bass': 'bass.flac'}})
-    r = client.post(f'/api/songs/{song_id}/autotab')
+    assert client.post(f'/api/songs/{song_id}/autotab?bpm=500').status_code == 422
+    r = client.post(f'/api/songs/{song_id}/autotab?bpm=110')
     assert r.status_code == 200
     assert wait_job(client, r.json()['jobId'])['state'] == 'done'
+    assert client.get(f'/api/songs/{song_id}/chart').json()['bpm'] == pytest.approx(110, rel=0.02)
     [pub] = client.get('/api/songs').json()['songs']
     assert pub['hasChart'] and pub['autoTab']
     assert client.get(f'/api/songs/{song_id}/chart').json()['notes']
