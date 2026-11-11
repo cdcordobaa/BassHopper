@@ -3,7 +3,7 @@ import { ALL_LEVELS } from '../game/path/worlds'
 import { isUnlocked } from './PathMap'
 import { lastInput, reconnectLast, useEngine } from './hooks'
 
-export function Home({ go }: { go: (screen: 'path' | 'free' | 'setup' | 'arena' | 'jam', levelId?: string) => void }) {
+export function Home({ go }: { go: (screen: 'path' | 'free' | 'setup' | 'arena' | 'solo' | 'jam', levelId?: string) => void }) {
   const e = useEngine()
   const p = useProgress()
   const lvl = playerLevel(p.xp)
@@ -68,6 +68,11 @@ export function Home({ go }: { go: (screen: 'path' | 'free' | 'setup' | 'arena' 
           <span className="tile-icon">🎤</span>
           <b>Riff Arena</b>
           <span>Play along with real songs</span>
+        </button>
+        <button className="tile" onClick={() => go('solo')}>
+          <span className="tile-icon">🌟</span>
+          <b>Solo Stage</b>
+          <span>Songs you can play alone and still impress</span>
         </button>
         <button className="tile" onClick={() => go('jam')}>
           <span className="tile-icon">🎛️</span>

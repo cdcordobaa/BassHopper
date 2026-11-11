@@ -16,3 +16,8 @@ def songs_dir() -> Path:
 def inbox_dir() -> Path:
     """Drop folder watched for new songs (see inbox.py)."""
     return Path(os.environ.get('BASSHOPPER_INBOX') or Path.home() / 'BassHopper' / 'inbox')
+
+
+def solos_dir() -> Path:
+    """Solo-bass arrangements (Solo Stage): one JSON file per piece, kept out of the repo."""
+    return Path(os.environ.get('BASSHOPPER_SOLOS') or Path.home() / 'BassHopper' / 'solos')

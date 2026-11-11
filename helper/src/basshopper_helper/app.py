@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import importer, inbox, jobs, library, stems
+from . import importer, inbox, jobs, library, solos, stems
 from .audio import AUDIO_EXT, MEDIA_TYPES, duration_sec
 from .stems import SeparationCancelled, demucs_available, separate
 from .tabs import TabError, UnsupportedTabError, build_chart, list_tracks, load_score, pick_track
@@ -109,6 +109,11 @@ def job_status(job_id: str) -> dict:
     if job is None:
         raise HTTPException(404, 'No such job')
     return job.to_dict()
+
+
+@app.get('/api/solos')
+def solo_pieces() -> dict:
+    return {'path': str(solos.solos_dir()), 'solos': solos.list_solos()}
 
 
 @app.get('/api/songs')

@@ -14,6 +14,7 @@ uv run pytest                 # tests (BASSHOPPER_TEST_DEMUCS=1 adds a real Demu
 | var | default | |
 |---|---|---|
 | `BASSHOPPER_LIBRARY` | `~/BassHopper/library` | songs live in `songs/{id}/` (`song.json`, `chart.json`, audio, original tab) |
+| `BASSHOPPER_SOLOS` | `~/BassHopper/solos` | Solo Stage pieces, one JSON file each (format in `solos.py`). Keep arrangements of copyrighted songs here, not in the repo |
 | `BASSHOPPER_HOST` / `BASSHOPPER_PORT` | `127.0.0.1` / `8765` | `BASSHOPPER_HOST=0.0.0.0` for LAN/tablet |
 | `BASSHOPPER_DEMUCS_DEVICE` | `mps` then `cpu` on Apple Silicon | e.g. `cpu`, `cuda` |
 | `BASSHOPPER_DISABLE_STEMS` | unset | force "full mix only" even if Demucs is installed |
@@ -32,6 +33,7 @@ uv run pytest                 # tests (BASSHOPPER_TEST_DEMUCS=1 adds a real Demu
 | `GET /api/songs/{id}/audio/{stem}` | `full` (original upload) always; `bass drums vocals other no_bass` (FLAC) after separation. Range requests supported |
 | `POST /api/songs/{id}/tab` (multipart `tab`, opt. `track`) | `{song, synced}`, adds or replaces the tab and auto-syncs it |
 | `POST /api/songs/{id}/autotab` | `{jobId}`, writes an approximate chart from the bass stem (409 without stems or over a real tab) |
+| `GET /api/solos` | `{path, solos:[piece + id]}`; a file that can't be used comes back as `{id,title,error}` |
 | `PATCH /api/songs/{id}` | `{offsetSec?, title?, artist?}` → song |
 | `DELETE /api/songs/{id}` | `{ok:true}` |
 

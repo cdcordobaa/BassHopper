@@ -4,6 +4,7 @@ import { JamRoom, RiffPlay, type RiffChart } from './jam'
 import { findLevel } from './game/path/worlds'
 import { FreePlay } from './ui/FreePlay'
 import { Home } from './ui/Home'
+import { SoloStage } from './solo/SoloStage'
 import { PathMap } from './ui/PathMap'
 import { Play } from './ui/Play'
 import { Setup } from './ui/Setup'
@@ -14,6 +15,7 @@ type Screen =
   | { name: 'path' }
   | { name: 'free' }
   | { name: 'arena' }
+  | { name: 'solo' }
   | { name: 'jam' }
   | { name: 'riff'; chart: RiffChart }
   | { name: 'level'; id: string }
@@ -34,6 +36,8 @@ export default function App() {
       return <FreePlay onBack={home} onSetup={setup} />
     case 'arena':
       return <RiffArena onBack={home} onSetup={setup} />
+    case 'solo':
+      return <SoloStage onBack={home} onSetup={setup} />
     case 'jam':
       return <JamRoom onBack={home} onSetup={setup} onPlayRiff={(chart) => setScreen({ name: 'riff', chart })} />
     case 'riff':

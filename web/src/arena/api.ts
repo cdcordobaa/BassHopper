@@ -93,6 +93,29 @@ export async function health(): Promise<Health | null> {
   }
 }
 
+/** A Solo Stage piece as stored in ~/BassHopper/solos (see helper/src/basshopper_helper/solos.py). */
+export interface SoloPiece {
+  id: string
+  title: string
+  artist?: string
+  key?: string
+  bpm: number
+  beatsPerBar?: number
+  /** Default note length of the notation, in beats. */
+  step?: number
+  about?: string[]
+  tip?: string
+  phrases: { name: string; notation: string; tip?: string }[]
+  /** Phrase order for the full performance; default: every phrase once. */
+  perform?: number[]
+  /** Set instead of the fields above when the file couldn't be used. */
+  error?: string
+}
+
+export async function listSolos(): Promise<{ path: string; solos: SoloPiece[] }> {
+  return call('/solos')
+}
+
 export async function listSongs(): Promise<Song[]> {
   return (await call<{ songs: Song[] }>('/songs')).songs
 }

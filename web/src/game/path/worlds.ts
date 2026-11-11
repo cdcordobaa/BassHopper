@@ -12,6 +12,8 @@ export interface Level {
   showNames?: boolean
   /** Default groove for the backing band. */
   style?: DrumStyle
+  /** A Solo Stage piece: no band, plain title, its own unlock rule. */
+  solo?: boolean
   chart: Chart
 }
 

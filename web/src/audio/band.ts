@@ -2,7 +2,8 @@
 // Kept free of the bass register so the pitch detector isn't fooled: chords sit above C5.
 
 export type DrumStyle = 'rock' | 'funk' | 'disco' | 'halftime' | 'punk'
-export type Backing = 'click' | 'drums' | 'band'
+/** 'silent': count-in clicks only, then nothing (solo pieces). */
+export type Backing = 'click' | 'drums' | 'band' | 'silent'
 
 export const DRUM_STYLES: { id: DrumStyle; label: string }[] = [
   { id: 'rock', label: 'Rock' },

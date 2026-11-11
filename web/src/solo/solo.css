@@ -1,0 +1,12 @@
+/* Solo Stage */
+.solo code { background: var(--panel2); padding: 0.1rem 0.4rem; border-radius: 6px; }
+.solo-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.8rem; }
+.solo-card { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; text-align: left; padding: 1rem; }
+.solo-card b { font-size: 1.15rem; }
+.solo-progress { font-size: 0.85rem; color: var(--muted); display: inline-flex; gap: 0.3rem; align-items: center; }
+.phrases { list-style: none; padding: 0; margin: 0.6rem 0 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.phrase { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; padding: 0.5rem 0.7rem; border: 1px solid var(--line); border-radius: 10px; background: var(--panel2); }
+.phrase.done { border-color: var(--ok); }
+.phrase.locked { opacity: 0.55; }
+.phrase-name { flex: 1; min-width: 180px; font-weight: 600; }
+.listen { display: inline-flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }

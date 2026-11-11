@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { DRUM_STYLES, playChordStab, playDrumStep, type Backing, type DrumStyle } from '../audio/band'
 import { engine } from '../audio/engine'
 import { chartToTab, stretchAfter, timeChart } from '../game/chart'
@@ -18,12 +18,21 @@ const BACKINGS: { id: Backing; label: string }[] = [
   { id: 'drums', label: '🥁 Drums' },
   { id: 'band', label: '🎸 Full band' },
 ]
+const SOLO_BACKINGS: { id: Backing; label: string }[] = [
+  { id: 'click', label: '⏱ Click' },
+  { id: 'silent', label: '🤫 Nothing, just me' },
+]
 
 interface Props {
   level: Level
   onExit: () => void
   onSetup: () => void
   onLevel: (id: string) => void
+  /** Overrides the Path's "next level" (Solo Stage: the next phrase). null = none. */
+  next?: { title: string; go: () => void } | null
+  exitLabel?: string
+  /** Extra controls on the intro screen, under the explainer (Solo Stage: Listen). */
+  extra?: ReactNode
 }
 
 type Phase =
@@ -45,7 +54,7 @@ const flag = (key: string, fallback: boolean) => {
   return v === null ? fallback : v === '1'
 }
 
-function SettingsPanel({ s, set, bpm, compact = false }: { s: PlaySettings; set: (p: Partial<PlaySettings>) => void; bpm: number; compact?: boolean }) {
+function SettingsPanel({ s, set, bpm, compact = false, solo = false }: { s: PlaySettings; set: (p: Partial<PlaySettings>) => void; bpm: number; compact?: boolean; solo?: boolean }) {
   return (
     <div className={compact ? 'live-controls' : 'settings-panel'}>
       <div className="row">
@@ -68,13 +77,13 @@ function SettingsPanel({ s, set, bpm, compact = false }: { s: PlaySettings; set:
       </div>
       <div className="row">
         <div className="seg">
-          {BACKINGS.map((b) => (
+          {(solo ? SOLO_BACKINGS : BACKINGS).map((b) => (
             <button key={b.id} className={b.id === s.backing ? 'on' : ''} onClick={() => set({ backing: b.id })}>
               {b.label}
             </button>
           ))}
         </div>
-        {s.backing !== 'click' && (
+        {s.backing !== 'click' && s.backing !== 'silent' && (
           <div className="seg">
             {DRUM_STYLES.map((d) => (
               <button key={d.id} className={d.id === s.style ? 'on' : ''} onClick={() => set({ style: d.id })}>
@@ -89,17 +98,17 @@ function SettingsPanel({ s, set, bpm, compact = false }: { s: PlaySettings; set:
 }
 
 
-export function Play({ level, onExit, onSetup, onLevel }: Props) {
+export function Play({ level, onExit, onSetup, onLevel, next: nextOverride, exitLabel = 'Map', extra }: Props) {
   const e = useEngine()
   const [settings, setSettings] = useState<PlaySettings>(() => ({
     speed: 1,
     rookie: flag('bh.rookie', true),
     wait: flag('bh.wait', true),
-    backing: (localStorage.getItem('bh.backing') as Backing | null) ?? 'drums',
+    backing: level.solo ? 'click' : ((localStorage.getItem('bh.backing') as Backing | null) ?? 'drums'),
     style: level.style ?? 'rock',
   }))
   const set = (patch: Partial<PlaySettings>) => {
-    if (patch.backing) localStorage.setItem('bh.backing', patch.backing)
+    if (patch.backing && !level.solo) localStorage.setItem('bh.backing', patch.backing)
     if (patch.wait !== undefined) localStorage.setItem('bh.wait', patch.wait ? '1' : '0')
     if (patch.rookie !== undefined) localStorage.setItem('bh.rookie', patch.rookie ? '1' : '0')
     setSettings((s) => ({ ...s, ...patch }))
@@ -137,7 +146,8 @@ export function Play({ level, onExit, onSetup, onLevel }: Props) {
 
   if (phase.name === 'done') {
     const { summary: s, xp, avgDelta } = phase
-    const next = nextLevel(level.id)
+    const pathNext = nextLevel(level.id)
+    const next = nextOverride !== undefined ? nextOverride : pathNext && { title: pathNext.title, go: () => onLevel(pathNext.id) }
     const tendency =
       avgDelta === null || Math.abs(avgDelta) < 0.015
         ? 'Your timing is centred. Nice.'
@@ -156,15 +166,15 @@ export function Play({ level, onExit, onSetup, onLevel }: Props) {
           <span className="g-perfect">{s.perfect} perfect</span> · <span className="g-good">{s.good} good</span> · <span className="g-miss">{s.miss} miss</span>
         </p>
         <p>{tendency}</p>
-        {s.stars < 2 && <p className="muted">Next level unlocked anyway. Come back for 2★+ when you feel ready — repetition is how it sticks.</p>}
+        {s.stars < 2 && !level.solo && <p className="muted">Next level unlocked anyway. Come back for 2★+ when you feel ready — repetition is how it sticks.</p>}
         <section className="card">
           <h2>Play again with…</h2>
-          <SettingsPanel s={settings} set={set} bpm={level.chart.bpm} />
+          <SettingsPanel s={settings} set={set} bpm={level.chart.bpm} solo={level.solo} />
         </section>
         <div className="row center">
           <button className="primary" onClick={start}>↻ Retry</button>
-          {next && <button className="primary" onClick={() => onLevel(next.id)}>Next: {next.title} →</button>}
-          <button className="ghost" onClick={onExit}>Map</button>
+          {next && <button className="primary" onClick={next.go}>Next: {next.title} →</button>}
+          <button className="ghost" onClick={onExit}>{exitLabel}</button>
         </div>
       </div>
     )
@@ -174,10 +184,8 @@ export function Play({ level, onExit, onSetup, onLevel }: Props) {
   return (
     <div className="screen intro">
       <header className="screen-head">
-        <button className="ghost" onClick={onExit}>← Map</button>
-        <h1>
-          {level.id} · {level.title}
-        </h1>
+        <button className="ghost" onClick={onExit}>← {exitLabel}</button>
+        <h1>{level.solo ? level.title : `${level.id} · ${level.title}`}</h1>
         {best && <span className="stars">{[1, 2, 3].map((i) => <span key={i} className={i <= best.stars ? 'lit' : ''}>★</span>)}</span>}
       </header>
       <section className="card">
@@ -185,18 +193,21 @@ export function Play({ level, onExit, onSetup, onLevel }: Props) {
           <p key={line}>{line}</p>
         ))}
         <p className="tip">💡 {level.tip}</p>
+        {extra}
       </section>
       <section className="card">
         <h2>The tab</h2>
         <p className="muted">Each line is a string (G on top, E at the bottom). Numbers are frets; 0 = open string.</p>
         <pre className="tab">{chartToTab(level.chart).join('\n')}</pre>
-        <p className="muted">Key: <b>{keyName(detectKey(chartKeyNotes(level.chart), level.chart.beatsPerBar))}</b> — the band plays chords from this key.</p>
+        {!level.solo && (
+          <p className="muted">Key: <b>{keyName(detectKey(chartKeyNotes(level.chart), level.chart.beatsPerBar))}</b> — the band plays chords from this key.</p>
+        )}
       </section>
       <section className="card">
         <h2>Settings</h2>
         <p className="muted">You can change all of these while playing too.</p>
-        <SettingsPanel s={settings} set={set} bpm={level.chart.bpm} />
-        {settings.backing !== 'click' && e.source?.kind === 'mic' && (
+        <SettingsPanel s={settings} set={set} bpm={level.chart.bpm} solo={level.solo} />
+        {settings.backing !== 'click' && settings.backing !== 'silent' && e.source?.kind === 'mic' && (
           <p className="muted">🎧 Headphones recommended. Otherwise keep the band quieter than your amp so the mic hears your bass, not the drums.</p>
         )}
       </section>
@@ -273,6 +284,7 @@ function Session({ level, settings, set, onDone, onQuit, onRestart }: SessionPro
     const playStep = (step: number, at: number) => {
       const countSteps = countIn * 4
       const { backing, style } = live.current
+      if (step >= countSteps && backing === 'silent') return
       if (step < countSteps || backing === 'click') {
         if (step % 4 === 0) engine.click(at, (step / 4) % chart.beatsPerBar === 0, bus)
         return
@@ -412,7 +424,7 @@ function Session({ level, settings, set, onDone, onQuit, onRestart }: SessionPro
           {hud.combo} combo {hud.mult > 1 && <b>×{hud.mult}</b>}
         </div>
       </div>
-      <SettingsPanel s={settings} set={set} bpm={chart.bpm} compact />
+      <SettingsPanel s={settings} set={set} bpm={chart.bpm} compact solo={level.solo} />
       <div className="stage">
         <Highway state={hw} />
         {counting && <div className="countin">{hud.beat + countIn + 1}</div>}
