@@ -5,7 +5,7 @@ import type { Level } from '../game/path/worlds'
 import { useProgress, type Progress } from '../game/progress'
 import { Play } from '../ui/Play'
 import { listen } from './listen'
-import { PASS, phraseOpen, soloLevels, stageOpen, type SoloLevels } from './pieces'
+import { learned, PASS, soloLevels, type SoloLevels } from './pieces'
 import './solo.css'
 
 interface Props {
@@ -42,7 +42,6 @@ export function SoloStage({ onBack, onSetup }: Props) {
     const i = all.findIndex((l) => l.id === view.level)
     const level = all[i]
     const after = levels.phrases[i + 1] ?? (i === levels.phrases.length - 1 ? levels.stage : undefined)
-    const afterOpen = after && (after === levels.stage ? stageOpen(levels, p) : phraseOpen(levels, i + 1, p))
     const open = (l: Level) => setView({ name: 'play', id: piece.id, level: l.id })
     return (
       <Play
@@ -52,7 +51,7 @@ export function SoloStage({ onBack, onSetup }: Props) {
         onExit={() => setView({ name: 'piece', id: piece.id })}
         onSetup={onSetup}
         onLevel={() => {}}
-        next={after && afterOpen ? { title: after === levels.stage ? 'On stage' : after.title.split(' · ')[1], go: () => open(after) } : null}
+        next={after ? { title: after === levels.stage ? 'On stage' : after.title.split(' · ')[1], go: () => open(after) } : null}
         extra={<ListenButton chart={level.chart} />}
       />
     )
@@ -105,7 +104,7 @@ function PieceProgress({ piece, p }: { piece: SoloPiece; p: Progress }) {
   } catch {
     return null
   }
-  const passed = levels.phrases.filter((l) => (p.levels[l.id]?.bestAccuracy ?? 0) >= PASS).length
+  const passed = levels.phrases.filter((l) => learned(l, p)).length
   const stars = p.levels[levels.stage.id]?.stars ?? 0
   return (
     <span className="solo-progress">
@@ -141,18 +140,17 @@ function PieceScreen({ piece, levels, broken, p, onBack, onPlay }: {
           </section>
           <section className="card">
             <h2>1 · Learn it phrase by phrase</h2>
-            <p className="muted">Hit {Math.round(PASS * 100)}% on a phrase to open the next. Wait for me and a slower speed are fine.</p>
+            <p className="muted">Practice them in any order. {Math.round(PASS * 100)}% or better marks a phrase ✅ learned. Wait for me and a slower speed are fine.</p>
             <ol className="phrases">
               {levels.phrases.map((l, i) => {
-                const open = phraseOpen(levels, i, p)
                 const best = p.levels[l.id]?.bestAccuracy
-                const done = (best ?? 0) >= PASS
+                const done = learned(l, p)
                 return (
-                  <li key={l.id} className={`phrase ${open ? '' : 'locked'} ${done ? 'done' : ''}`}>
-                    <span className="phrase-name">{done ? '✅' : open ? '▶' : '🔒'} {piece.phrases[i].name}</span>
-                    <span className="muted">{best !== undefined ? `best ${Math.round(best * 100)}%` : open ? 'not played yet' : ''}</span>
+                  <li key={l.id} className={`phrase ${done ? 'done' : ''}`}>
+                    <span className="phrase-name">{done ? '✅' : '▶'} {piece.phrases[i].name}</span>
+                    <span className="muted">{best !== undefined ? `best ${Math.round(best * 100)}%` : 'not played yet'}</span>
                     <ListenButton chart={l.chart} label="Hear it" small />
-                    <button className="primary" disabled={!open} onClick={() => onPlay(l.id)}>Practice</button>
+                    <button className="primary" onClick={() => onPlay(l.id)}>Practice</button>
                   </li>
                 )
               })}
@@ -160,10 +158,10 @@ function PieceScreen({ piece, levels, broken, p, onBack, onPlay }: {
           </section>
           <section className="card">
             <h2>2 · On stage</h2>
-            <p className="muted">The whole piece, no band. {stageOpen(levels, p) ? 'You know every phrase: go impress someone.' : 'Opens when every phrase is learned.'}</p>
+            <p className="muted">The whole piece, no band. {levels.phrases.every((l) => learned(l, p)) ? 'You know every phrase: go impress someone.' : 'Jump in whenever you like.'}</p>
             <div className="row">
               <Stars n={p.levels[levels.stage.id]?.stars ?? 0} />
-              <button className="primary huge" disabled={!stageOpen(levels, p)} onClick={() => onPlay(levels.stage.id)}>🎤 Perform</button>
+              <button className="primary huge" onClick={() => onPlay(levels.stage.id)}>🎤 Perform</button>
             </div>
           </section>
         </>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { SoloPiece } from '../arena/api'
 import type { Progress } from '../game/progress'
-import { PASS, phraseOpen, soloLevels, stageOpen } from '../solo/pieces'
+import { learned, PASS, soloLevels } from '../solo/pieces'
 
 const piece: SoloPiece = {
   id: 'riff',
@@ -30,15 +30,12 @@ describe('solo pieces', () => {
     expect(stage.chart.lengthBeats).toBe(12)
   })
 
-  it('opens each phrase after the previous one is passed, and the stage after all of them', () => {
-    const l = soloLevels(piece)
-    const none = played({})
-    expect(phraseOpen(l, 0, none)).toBe(true)
-    expect(phraseOpen(l, 1, none)).toBe(false)
-    const first = played({ 'solo:riff:0': PASS })
-    expect(phraseOpen(l, 1, first)).toBe(true)
-    expect(stageOpen(l, first)).toBe(false)
-    expect(stageOpen(l, played({ 'solo:riff:0': 0.95, 'solo:riff:1': 0.9 }))).toBe(true)
+  it('marks a phrase learned at PASS accuracy', () => {
+    const [a, b] = soloLevels(piece).phrases
+    const p = played({ 'solo:riff:0': PASS, 'solo:riff:1': PASS - 0.01 })
+    expect(learned(a, p)).toBe(true)
+    expect(learned(b, p)).toBe(false)
+    expect(learned(a, played({}))).toBe(false)
   })
 
   it('reports bad notation', () => {
